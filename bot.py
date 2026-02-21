@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║          🛡️ Military Intel Bot — Anti-Freeze & Fast AI Edition           ║
+║          🛡️ Military Intel Bot — Anti-Freeze & Gemini 2.5 Edition        ║
 ║     Iran · Israel · USA  |  REST API + Hard Timeouts + RSSHub           ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
@@ -27,8 +27,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 SEEN_FILE       = "seen.json"
 MAX_NEW_PER_RUN = 25          
-SEND_DELAY      = 3  
+SEND_DELAY      = 6  # تاخیر ۶ ثانیه برای جلوگیری از مسدود شدن توسط لیمیت گوگل (۱۰ درخواست در دقیقه)
 TEHRAN_TZ       = pytz.timezone("Asia/Tehran")
+
+# متغیر سراسری برای جلوگیری از هنگ کردن در صورت لیمیت شدن API گوگل
+AI_LIMIT_REACHED = False
 
 # ════════════════════════════════════════════════════════════════
 # ۱. منابع معتبر بر اساس پروژه‌های متن‌باز گیت‌هاب
@@ -48,7 +51,6 @@ RSS_FEEDS = [
     {"name": "🔍 ISW (War Study)",   "url": "https://www.understandingwar.org/rss.xml"},
 ]
 
-# جستجوی گوگل نیوز
 GOOGLE_NEWS_QUERIES = [
     ("⚔️ Iran Israel Attack",       "Iran Israel military attack strike revenge"),
     ("⚔️ IDF Strike Iran",          "IDF airstrike Iran IRGC base facilities"),
@@ -61,7 +63,6 @@ def google_news_url(query: str) -> str:
 
 GOOGLE_FEEDS = [{"name": name, "url": google_news_url(q), "is_google": True} for name, q in GOOGLE_NEWS_QUERIES]
 
-# توییتر (Nitter و RSSHub)
 TWITTER_ACCOUNTS = [
     ("📰 Barak Ravid",      "BarakRavid"),
     ("📰 Natasha Bertrand", "NatashaBertrand"),
@@ -107,7 +108,7 @@ def is_fresh_news(entry: dict) -> bool:
         if dt < cutoff:
             return False
             
-        # فیلتر ۲۴ ساعت
+        # فیلتر ۲۴ ساعت: خبر بیشتر از ۲۴ ساعت گذشته ارسال نمی‌شود
         if (now - dt) > timedelta(hours=24):
             return False
             
@@ -132,23 +133,28 @@ def is_relevant(entry: dict, is_twitter: bool = False) -> bool:
     return any(kw in text for kw in KEYWORDS)
 
 # ════════════════════════════════════════════════════════════════
-# ۳. دانلود امن و ضد هنگ اطلاعات
+# ۳. دانلود امن و ضد هنگ اطلاعات (Absolute Timeouts)
 # ════════════════════════════════════════════════════════════════
 async def fetch_single_feed(client: httpx.AsyncClient, cfg: dict) -> list:
     url = cfg["url"]
     try:
-        # تایم‌اوت سخت ۸ ثانیه. اگر سایتی جواب نداد بلافاصله قطع می‌شود تا برنامه هنگ نکند
-        response = await client.get(url, timeout=httpx.Timeout(8.0), headers={"User-Agent": "Mozilla/5.0 MilNewsBot/7.0"})
+        # تایم‌اوت سخت ۶ ثانیه. اگر سایتی جواب نداد بلافاصله قطع می‌شود تا برنامه هنگ نکند
+        response = await client.get(url, timeout=httpx.Timeout(6.0), headers={"User-Agent": "Mozilla/5.0 MilNewsBot/8.0"})
         if response.status_code == 200:
             return feedparser.parse(response.text).entries
     except:
-        pass # رد شدن بی‌صدا از سایت‌های خراب
+        pass 
     return []
 
 async def fetch_all_feeds_concurrently(client: httpx.AsyncClient, feeds: list) -> list:
     tasks = [fetch_single_feed(client, cfg) for cfg in feeds]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+    # کل پروسه دانلود حداکثر اجازه دارد ۱۵ ثانیه طول بکشد
+    try:
+        results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=15.0)
+    except asyncio.TimeoutError:
+        log.error("⚠️ Timeout کل در دریافت خبرها رخ داد.")
+        return []
+        
     entries_with_cfg = []
     for i, entries in enumerate(results):
         if isinstance(entries, list):
@@ -157,11 +163,12 @@ async def fetch_all_feeds_concurrently(client: httpx.AsyncClient, feeds: list) -
     return entries_with_cfg
 
 # ════════════════════════════════════════════════════════════════
-# ۴. مترجم هوش مصنوعی مستقیم با REST API (بدون هنگ کردن)
+# ۴. مترجم هوش مصنوعی مستقیم با مدل پایدار Gemini 2.5 Flash
 # ════════════════════════════════════════════════════════════════
 async def ai_translate_combined(client: httpx.AsyncClient, title: str, summary: str) -> tuple:
-    """ترجمه عنوان و خلاصه در یک درخواست برای دور زدن محدودیت گوگل"""
-    if not GEMINI_API_KEY or len(title) < 3:
+    global AI_LIMIT_REACHED
+    # اگر قبلاً لیمیت شده باشیم، وقت را تلف نمی‌کند و سریع متن انگلیسی را برمی‌گرداند
+    if not GEMINI_API_KEY or len(title) < 3 or AI_LIMIT_REACHED:
         return title, summary
 
     prompt = f"""شما یک مترجم ارشد نظامی هستید.
@@ -173,6 +180,7 @@ async def ai_translate_combined(client: httpx.AsyncClient, title: str, summary: 
 Title: {title}
 Summary: {summary}"""
 
+    # ارتقا یافته به نسخه قدرتمند و پایدار 2.5 فلش
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -180,22 +188,22 @@ Summary: {summary}"""
     }
 
     try:
-        # تایم‌اوت ۱۵ ثانیه برای هوش مصنوعی
-        response = await client.post(url, json=payload, timeout=httpx.Timeout(15.0))
+        response = await client.post(url, json=payload, timeout=httpx.Timeout(8.0))
         if response.status_code == 200:
             text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
             parts = text.split("---")
             if len(parts) >= 2:
                 return parts[0].strip(), parts[1].strip()
-            else:
-                return text.strip(), summary
-        elif response.status_code == 429:
-            log.warning("⚠️ لیمیت گوگل! (چند ثانیه توقف)")
-            await asyncio.sleep(5) # در صورت لیمیت، ۵ ثانیه صبر میکند
+            return text.strip(), summary
+            
+        elif response.status_code in (429, 403, 400):
+            log.warning(f"⚠️ خطای API یا لیمیت گوگل (کد {response.status_code}). ترجمه برای بقیه خبرها در این دور متوقف شد تا ربات هنگ نکند.")
+            AI_LIMIT_REACHED = True
+            
     except Exception as e:
-        log.error(f"خطای ترجمه API: {e}")
+        log.error(f"خطای ارتباط با هوش مصنوعی: {e}")
         
-    return title, summary # در صورت ارور، متن انگلیسی فرستاده می‌شود
+    return title, summary 
 
 def clean_html(text: str) -> str:
     if not text: return ""
@@ -238,23 +246,23 @@ def save_seen(seen: set):
 TGAPI = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 async def tg_send(client: httpx.AsyncClient, text: str) -> bool:
-    for _ in range(3):
+    for _ in range(2):
         try:
             r = await client.post(f"{TGAPI}/sendMessage", json={
                 "chat_id": CHANNEL_ID,
                 "text": text[:MAX_MSG_LEN],
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
-            }, timeout=httpx.Timeout(10.0))
+            }, timeout=httpx.Timeout(8.0))
             
             data = r.json()
             if data.get("ok"): return True
             if data.get("error_code") == 429:
-                await asyncio.sleep(data.get("parameters", {}).get("retry_after", 10))
+                await asyncio.sleep(data.get("parameters", {}).get("retry_after", 5))
             else:
                 return False
         except Exception:
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
     return False
 
 # ════════════════════════════════════════════════════════════════
@@ -304,22 +312,30 @@ async def main():
             dt = format_dt(entry)
             icon = "𝕏" if is_tw else "📡"
 
-            log.info(f"⏳ در حال ترجمه خبر: {en_title[:40]}...")
+            log.info(f"⏳ در حال پردازش خبر: {en_title[:40]}...")
             fa_title, fa_summary = await ai_translate_combined(client, en_title, en_summary_short)
             
             fa_title = escape_html(fa_title.replace("**", ""))
             fa_summary = escape_html(fa_summary.replace("**", ""))
             en_title_escaped = escape_html(en_title)
 
-            lines = [f"🔴 <b>{fa_title}</b>", ""]
-            if fa_summary and fa_summary.lower() not in fa_title.lower() and len(fa_summary) > 10:
-                lines += [f"🔹 <i>{fa_summary}</i>", ""]
-                
-            lines += [
-                "──────────────",
-                f"🇺🇸 <b>متن اصلی:</b>",
-                f"<blockquote expandable>{en_title_escaped}</blockquote>"
-            ]
+            # چک کردن اینکه آیا ترجمه موفق بوده یا به دلیل لیمیت گوگل لغو شده است
+            if fa_title == en_title_escaped or fa_title == en_title:
+                # ── فرمت در صورت عدم ترجمه ──
+                lines = [f"🔴 <b>{en_title_escaped}</b>", ""]
+                if en_summary_short:
+                    lines += [f"🔹 <i>{escape_html(en_summary_short)}</i>", ""]
+            else:
+                # ── فرمت در صورت ترجمه موفق ──
+                lines = [f"🔴 <b>{fa_title}</b>", ""]
+                if fa_summary and fa_summary.lower() not in fa_title.lower() and len(fa_summary) > 10:
+                    lines += [f"🔹 <i>{fa_summary}</i>", ""]
+                lines += [
+                    "──────────────",
+                    f"🇺🇸 <b>متن اصلی:</b>",
+                    f"<blockquote expandable>{en_title_escaped}</blockquote>"
+                ]
+
             if dt: lines.append(dt)
             lines.append(f"{icon} <b>{cfg['name']}</b>")
             if link: lines.append(f'🔗 <a href="{link}">لینک خبر اصلی</a>')
@@ -334,7 +350,7 @@ async def main():
             await asyncio.sleep(SEND_DELAY)
 
         save_seen(seen)
-        log.info(f"✔️ پایان پردازش | {sent} خبر جدید (امروز به بعد) با موفقیت ارسال شد.")
+        log.info(f"✔️ پایان پردازش | {sent} خبر جدید با موفقیت ارسال شد.")
 
 if __name__ == "__main__":
     asyncio.run(main())
