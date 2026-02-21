@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║          🛡️ Military Intel Bot — Translated Edition                      ║
+║          🛡️ Military Intel Bot — Translated & Fresh News Edition         ║
 ║     Iran · Israel · USA  |  RSS + Google News + Twitter/X (Nitter)      ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
@@ -25,7 +25,7 @@ log = logging.getLogger("MilBot")
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID  = os.environ.get("CHANNEL_ID", "")
 SEEN_FILE   = "seen.json"
-MAX_NEW_PER_RUN = 50          # افزایش به ۵۰ برای از دست ندادن خبرها
+MAX_NEW_PER_RUN = 50          
 SEND_DELAY  = 3               
 MAX_MSG_LEN = 4000
 TEHRAN_TZ   = pytz.timezone("Asia/Tehran")
@@ -99,16 +99,28 @@ NITTER_FEEDS = get_nitter_feeds()
 ALL_FEEDS = RSS_FEEDS + GOOGLE_FEEDS + NITTER_FEEDS
 
 # ════════════════════════════════════════════════════════════════
-# توابع پردازش و فیلتر (جلوگیری از جا ماندن خبر)
+# توابع پردازش و فیلتر (فقط امروز و خبرهای مرتبط)
 # ════════════════════════════════════════════════════════════════
-def is_recent(entry: dict, hours: int = 48) -> bool:
-    """ برای جلوگیری از حذف اشتباهی خبرها بخاطر منطقه زمانی، ۴۸ ساعت اخیر را پوشش می‌دهیم """
+
+def is_fresh_news(entry: dict) -> bool:
+    """ فقط خبرهای 21 فوریه 2026 به بعد و حداکثر مربوط به 24 ساعت گذشته """
     try:
         t = entry.get("published_parsed") or entry.get("updated_parsed")
-        if not t: return True
+        if not t: return True # در صورتی که خبر تاریخ نداشت برای از دست نرفتن تایید می‌شود
+        
         dt = datetime(*t[:6], tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
-        return (now - dt) <= timedelta(hours=hours)
+        
+        # ۱. فیلتر قطعی: هیچ خبری قبل از 21 فوریه 2026 تایید نشود
+        cutoff = datetime(2026, 2, 21, tzinfo=timezone.utc)
+        if dt < cutoff:
+            return False
+            
+        # ۲. فیلتر شناور: خبر نباید برای بیشتر از 24 ساعت پیش باشد
+        if (now - dt) > timedelta(hours=24):
+            return False
+            
+        return True
     except:
         return True
 
@@ -139,7 +151,7 @@ def translate_to_fa(text: str) -> str:
         return translated
     except Exception as e:
         log.error(f"Translation Error: {e}")
-        return text  # در صورت قطعی مترجم، متن اصلی رو برمی‌گردونه
+        return text 
 
 def clean_html(text: str) -> str:
     if not text: return ""
@@ -181,7 +193,6 @@ def build_message(entry: dict, source: str, is_twitter: bool = False) -> str:
 
     lines = [f"🔴 <b>{fa_title}</b>", ""]
     
-    # اگر خلاصه خبر با عنوان فرق داشت (تکراری نبود)، خلاصه‌ی فارسی رو هم میذاریم
     if fa_summary_short and fa_summary_short.lower() not in fa_title.lower():
         lines += [f"🔹 <i>{fa_summary_short}</i>", ""]
         
@@ -193,7 +204,7 @@ def build_message(entry: dict, source: str, is_twitter: bool = False) -> str:
 
     if dt: lines.append(dt)
     lines.append(f"{icon} <b>{source}</b>")
-    if link: lines.append(f'🔗 <a href="{link}">لینک اصلی خبر</a>')
+    if link: lines.append(f'🔗 <a href="{link}">لینک خبر اصلی</a>')
 
     return "\n".join(lines)
 
@@ -233,7 +244,7 @@ async def tg_send(client: httpx.AsyncClient, text: str) -> bool:
                 "chat_id": CHANNEL_ID,
                 "text": text[:MAX_MSG_LEN],
                 "parse_mode": "HTML",
-                "disable_web_page_preview": True, # پیش‌نمایش لینک خاموش شد تا پست مرتب‌تر باشد
+                "disable_web_page_preview": True,
             }, timeout=25)
             data = r.json()
             if data.get("ok"): return True
@@ -269,12 +280,12 @@ async def main():
                 if eid in seen:
                     continue
                 
-                # بررسی زمان: تا ۴۸ ساعت گذشته رو چک میکنه تا چیزی جا نمونه
-                if not is_recent(entry, hours=48):
+                # بررسی زمان: فقط خبرهای مربوط به ۲۱ فوریه ۲۰۲۶ به بعد
+                if not is_fresh_news(entry):
                     seen.add(eid)
                     continue
                 
-                # فیلتر کلمات کلیدی جنگی
+                # فیلتر کلمات کلیدی
                 if not is_relevant(entry, is_twitter=is_tw):
                     seen.add(eid)
                     continue
@@ -293,11 +304,11 @@ async def main():
             if await tg_send(client, msg):
                 seen.add(eid)
                 sent += 1
-                log.info(f"  ✅ [{cfg['name']}] ترجمه و ارسال شد.")
+                log.info(f"  ✅ [{cfg['name']}] ارسال شد.")
             await asyncio.sleep(SEND_DELAY)
 
         save_seen(seen)
-        log.info(f"✔️ پایان | {sent} خبر جدید ترجمه و ارسال شد.")
+        log.info(f"✔️ پایان | {sent} خبر جدید (امروز به بعد) ارسال شد.")
 
 if __name__ == "__main__":
     asyncio.run(main())
