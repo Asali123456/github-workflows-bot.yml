@@ -1,7 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║          🛡️ Military Intel Bot — AI LLM Translation Edition              ║
-║     Iran · Israel · USA  |  RSSHub + Google News + Twitter/X            ║
+║          🛡️ Military Intel Bot — Anti-Freeze & Fast AI Edition           ║
+║     Iran · Israel · USA  |  REST API + Hard Timeouts + RSSHub           ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
 import feedparser, httpx, pytz
-import google.generativeai as genai
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,20 +25,10 @@ BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID     = os.environ.get("CHANNEL_ID", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-SEEN_FILE   = "seen.json"
-MAX_NEW_PER_RUN = 30          
-SEND_DELAY  = 5  # تاخیر ۵ ثانیه برای رعایت محدودیت رایگان هوش مصنوعی (15 RPM)
-TEHRAN_TZ   = pytz.timezone("Asia/Tehran")
-
-# کانفیگ هوش مصنوعی گوگل
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # استفاده از مدل سریع و قدرتمند فلش
-    generation_config = {"temperature": 0.2, "top_p": 0.95} 
-    ai_model = genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
-else:
-    ai_model = None
-    log.error("⚠️ GEMINI_API_KEY تنظیم نشده است. ترجمه انجام نخواهد شد.")
+SEEN_FILE       = "seen.json"
+MAX_NEW_PER_RUN = 25          
+SEND_DELAY      = 3  
+TEHRAN_TZ       = pytz.timezone("Asia/Tehran")
 
 # ════════════════════════════════════════════════════════════════
 # ۱. منابع معتبر بر اساس پروژه‌های متن‌باز گیت‌هاب
@@ -68,13 +57,11 @@ GOOGLE_NEWS_QUERIES = [
 ]
 
 def google_news_url(query: str) -> str:
-    return f"https://news.google.com/rss/search?q={query.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en&num=15"
+    return f"https://news.google.com/rss/search?q={query.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en&num=10"
 
 GOOGLE_FEEDS = [{"name": name, "url": google_news_url(q), "is_google": True} for name, q in GOOGLE_NEWS_QUERIES]
 
-# ════════════════════════════════════════════════════════════════
-# ۲. توییتر از طریق RSSHub (قدرتمندترین پلتفرم گیت‌هاب) و Nitter
-# ════════════════════════════════════════════════════════════════
+# توییتر (Nitter و RSSHub)
 TWITTER_ACCOUNTS = [
     ("📰 Barak Ravid",      "BarakRavid"),
     ("📰 Natasha Bertrand", "NatashaBertrand"),
@@ -87,11 +74,10 @@ TWITTER_ACCOUNTS = [
     ("🇺🇸 CENTCOM",        "CENTCOM"),
 ]
 
-# ترکیب RSSHub (پروژه برتر گیت‌هاب) و Nitter برای اینکه هیچ توییتی مسدود نشود
 TWITTER_MIRRORS = [
-    "https://rsshub.app/twitter/user",     # RSSHub اصلی
-    "https://nitter.poast.org",            # Nitter جایگزین
-    "https://nitter.privacydev.net",       # Nitter جایگزین ۲
+    "https://rsshub.app/twitter/user",     
+    "https://nitter.poast.org",            
+    "https://nitter.privacydev.net",       
 ]
 
 def get_twitter_feeds() -> list[dict]:
@@ -100,16 +86,15 @@ def get_twitter_feeds() -> list[dict]:
         for mirror in TWITTER_MIRRORS:
             url = f"{mirror}/{handle}" if "rsshub" in mirror else f"{mirror}/{handle}/rss"
             feeds.append({"name": f"𝕏 {name}", "url": url, "nitter_handle": handle})
-            break # اولی رو برمیداره، در صورت خرابی بعدا تو تابع fetch هندل میشه
+            break 
     return feeds
 
 ALL_FEEDS = RSS_FEEDS + GOOGLE_FEEDS + get_twitter_feeds()
 
 # ════════════════════════════════════════════════════════════════
-# ۳. فیلترهای زمانی و محتوایی
+# ۲. فیلترهای زمانی و محتوایی
 # ════════════════════════════════════════════════════════════════
 def is_fresh_news(entry: dict) -> bool:
-    """ فقط خبرهای 21 فوریه 2026 به بعد و حداکثر مربوط به 24 ساعت گذشته """
     try:
         t = entry.get("published_parsed") or entry.get("updated_parsed")
         if not t: return True 
@@ -117,12 +102,12 @@ def is_fresh_news(entry: dict) -> bool:
         dt = datetime(*t[:6], tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         
-        # ۱. فیلتر قطعی تاریخ درخواستی کاربر: 21 Feb 2026
+        # فیلتر سخت‌گیرانه ۲۱ فوریه ۲۰۲۶
         cutoff = datetime(2026, 2, 21, tzinfo=timezone.utc)
         if dt < cutoff:
             return False
             
-        # ۲. فیلتر ۲۴ ساعت: خبرهای بیشتر از ۲۴ ساعت گذشته رد میشن
+        # فیلتر ۲۴ ساعت
         if (now - dt) > timedelta(hours=24):
             return False
             
@@ -147,34 +132,76 @@ def is_relevant(entry: dict, is_twitter: bool = False) -> bool:
     return any(kw in text for kw in KEYWORDS)
 
 # ════════════════════════════════════════════════════════════════
-# ۴. مترجم هوش مصنوعی (Google Gemini) - لحن خبری
+# ۳. دانلود امن و ضد هنگ اطلاعات
 # ════════════════════════════════════════════════════════════════
-async def ai_translate(text: str) -> str:
-    if not text or len(text.strip()) < 5 or not ai_model:
-        return text
-    
-    prompt = f"""
-شما یک مترجم ارشد خبرگزاری‌های نظامی و ژئوپلیتیک هستید.
-متن زیر را به زبان فارسی روان، دقیق و با لحن کاملاً خبری ترجمه کنید.
-بدون هیچ کلمه اضافه، بدون سلام و احوالپرسی، و بدون استفاده از فرمت‌های کدی (مثل ```). فقط متن ترجمه شده را برگردان.
-
-متن:
-{text}
-    """
+async def fetch_single_feed(client: httpx.AsyncClient, cfg: dict) -> list:
+    url = cfg["url"]
     try:
-        response = await asyncio.to_thread(ai_model.generate_content, prompt)
-        translated = response.text.strip().replace("```", "").strip()
-        return translated if translated else text
+        # تایم‌اوت سخت ۸ ثانیه. اگر سایتی جواب نداد بلافاصله قطع می‌شود تا برنامه هنگ نکند
+        response = await client.get(url, timeout=httpx.Timeout(8.0), headers={"User-Agent": "Mozilla/5.0 MilNewsBot/7.0"})
+        if response.status_code == 200:
+            return feedparser.parse(response.text).entries
+    except:
+        pass # رد شدن بی‌صدا از سایت‌های خراب
+    return []
+
+async def fetch_all_feeds_concurrently(client: httpx.AsyncClient, feeds: list) -> list:
+    tasks = [fetch_single_feed(client, cfg) for cfg in feeds]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    entries_with_cfg = []
+    for i, entries in enumerate(results):
+        if isinstance(entries, list):
+            for entry in entries:
+                entries_with_cfg.append((entry, feeds[i]))
+    return entries_with_cfg
+
+# ════════════════════════════════════════════════════════════════
+# ۴. مترجم هوش مصنوعی مستقیم با REST API (بدون هنگ کردن)
+# ════════════════════════════════════════════════════════════════
+async def ai_translate_combined(client: httpx.AsyncClient, title: str, summary: str) -> tuple:
+    """ترجمه عنوان و خلاصه در یک درخواست برای دور زدن محدودیت گوگل"""
+    if not GEMINI_API_KEY or len(title) < 3:
+        return title, summary
+
+    prompt = f"""شما یک مترجم ارشد نظامی هستید.
+عنوان و خلاصه خبر زیر را به فارسی روان و با لحن کاملاً خبری ترجمه کنید و دقیقاً با فرمت زیر برگردانید (بدون کلمه اضافه):
+[عنوان فارسی]
+---
+[خلاصه فارسی]
+
+Title: {title}
+Summary: {summary}"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2}
+    }
+
+    try:
+        # تایم‌اوت ۱۵ ثانیه برای هوش مصنوعی
+        response = await client.post(url, json=payload, timeout=httpx.Timeout(15.0))
+        if response.status_code == 200:
+            text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            parts = text.split("---")
+            if len(parts) >= 2:
+                return parts[0].strip(), parts[1].strip()
+            else:
+                return text.strip(), summary
+        elif response.status_code == 429:
+            log.warning("⚠️ لیمیت گوگل! (چند ثانیه توقف)")
+            await asyncio.sleep(5) # در صورت لیمیت، ۵ ثانیه صبر میکند
     except Exception as e:
-        log.error(f"خطای هوش مصنوعی: {e}")
-        return text
+        log.error(f"خطای ترجمه API: {e}")
+        
+    return title, summary # در صورت ارور، متن انگلیسی فرستاده می‌شود
 
 def clean_html(text: str) -> str:
     if not text: return ""
     return BeautifulSoup(str(text), "html.parser").get_text(" ", strip=True)
 
 def make_id(entry: dict) -> str:
-    # استفاده از لینک برای MD5 عشان عدم ارسال خبر تکراری
     key = entry.get("link") or entry.get("id") or entry.get("title") or ""
     return hashlib.md5(key.encode("utf-8")).hexdigest()
 
@@ -192,28 +219,8 @@ def escape_html(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 # ════════════════════════════════════════════════════════════════
-# دانلود همزمان اطلاعات
+# حافظه خبرها
 # ════════════════════════════════════════════════════════════════
-async def fetch_single_feed(client: httpx.AsyncClient, cfg: dict) -> list:
-    url = cfg["url"]
-    try:
-        response = await client.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0 MilNewsBot/6.0"})
-        if response.status_code == 200:
-            return feedparser.parse(response.text).entries
-    except: pass
-    return []
-
-async def fetch_all_feeds_concurrently(client: httpx.AsyncClient, feeds: list) -> list:
-    tasks = [fetch_single_feed(client, cfg) for cfg in feeds]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    entries_with_cfg = []
-    for i, entries in enumerate(results):
-        if isinstance(entries, list):
-            for entry in entries:
-                entries_with_cfg.append((entry, feeds[i]))
-    return entries_with_cfg
-
 def load_seen() -> set:
     if Path(SEEN_FILE).exists():
         try:
@@ -222,7 +229,7 @@ def load_seen() -> set:
     return set()
 
 def save_seen(seen: set):
-    recent = list(seen)[-15000:]
+    recent = list(seen)[-10000:]
     with open(SEEN_FILE, "w") as f: json.dump(recent, f)
 
 # ════════════════════════════════════════════════════════════════
@@ -238,11 +245,12 @@ async def tg_send(client: httpx.AsyncClient, text: str) -> bool:
                 "text": text[:MAX_MSG_LEN],
                 "parse_mode": "HTML",
                 "disable_web_page_preview": True,
-            }, timeout=25)
+            }, timeout=httpx.Timeout(10.0))
+            
             data = r.json()
             if data.get("ok"): return True
             if data.get("error_code") == 429:
-                await asyncio.sleep(data.get("parameters", {}).get("retry_after", 30))
+                await asyncio.sleep(data.get("parameters", {}).get("retry_after", 10))
             else:
                 return False
         except Exception:
@@ -258,12 +266,14 @@ async def main():
         return
 
     seen = load_seen()
-    log.info(f"🔄 شروع دریافت همزمان اطلاعات از منابع...")
+    log.info(f"🔄 ۱. در حال دریافت همزمان خبرها از خبرگزاری‌ها...")
     
     async with httpx.AsyncClient(follow_redirects=True) as client:
+        # مرحله ۱: دریافت خبرها
         raw_entries = await fetch_all_feeds_concurrently(client, ALL_FEEDS)
+        log.info(f"✅ ۲. دریافت پایان یافت. فیلتر کردن خبرهای نامعتبر و قدیمی...")
+        
         collected = []
-
         for entry, cfg in raw_entries:
             is_tw = bool(cfg.get("nitter_handle"))
             eid = make_id(entry)
@@ -278,30 +288,31 @@ async def main():
                 
             collected.append((eid, entry, cfg, is_tw))
 
-        collected = collected[::-1] # قدیمی‌ترین به جدیدترین
+        collected = collected[::-1] 
         if len(collected) > MAX_NEW_PER_RUN:
             collected = collected[-MAX_NEW_PER_RUN:]
 
+        log.info(f"🔍 ۳. تعداد {len(collected)} خبر جدید برای ترجمه و ارسال یافت شد.")
+
+        # مرحله ۲: ترجمه و ارسال
         sent = 0
         for eid, entry, cfg, is_tw in collected:
-            # آماده سازی متن اصلی
             en_title = clean_html(entry.get("title", "بدون عنوان")).strip()
-            en_summary = clean_html(entry.get("summary") or entry.get("description") or "")
+            raw_summary = clean_html(entry.get("summary") or entry.get("description") or "")
+            en_summary_short = raw_summary[:400].rsplit(" ", 1)[0] + "…" if len(raw_summary) > 400 else raw_summary
             link = entry.get("link", "")
             dt = format_dt(entry)
             icon = "𝕏" if is_tw else "📡"
 
-            # ترجمه با هوش مصنوعی گوگل
-            fa_title = escape_html(await ai_translate(en_title))
+            log.info(f"⏳ در حال ترجمه خبر: {en_title[:40]}...")
+            fa_title, fa_summary = await ai_translate_combined(client, en_title, en_summary_short)
             
-            summary_short = en_summary[:400].rsplit(" ", 1)[0] + "…" if len(en_summary) > 400 else en_summary
-            fa_summary = escape_html(await ai_translate(summary_short))
-            
+            fa_title = escape_html(fa_title.replace("**", ""))
+            fa_summary = escape_html(fa_summary.replace("**", ""))
             en_title_escaped = escape_html(en_title)
 
-            # ساختار پیام
             lines = [f"🔴 <b>{fa_title}</b>", ""]
-            if fa_summary and fa_summary.lower() not in fa_title.lower():
+            if fa_summary and fa_summary.lower() not in fa_title.lower() and len(fa_summary) > 10:
                 lines += [f"🔹 <i>{fa_summary}</i>", ""]
                 
             lines += [
@@ -318,13 +329,12 @@ async def main():
             if await tg_send(client, msg):
                 seen.add(eid)
                 sent += 1
-                log.info(f"  ✅ [{cfg['name']}] با موفقیت ترجمه و ارسال شد.")
+                log.info(f"  ✅ ارسال شد.")
             
-            # تاخیر برای رعایت محدودیت سرعت تلگرام و API هوش مصنوعی گوگل
             await asyncio.sleep(SEND_DELAY)
 
         save_seen(seen)
-        log.info(f"✔️ پایان | {sent} خبر جدید (امروز به بعد) با هوش مصنوعی ترجمه و ارسال شد.")
+        log.info(f"✔️ پایان پردازش | {sent} خبر جدید (امروز به بعد) با موفقیت ارسال شد.")
 
 if __name__ == "__main__":
     asyncio.run(main())
