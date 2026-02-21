@@ -2,14 +2,14 @@ name: 🛡️ Military News Bot
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/10 * * * *'   # هر ۱۰ دقیقه
   workflow_dispatch:
 
 jobs:
   run-bot:
     name: Fetch & Send News
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8   # کمتر از ۱۰ دقیقه تا تداخل نشه
 
     permissions:
       contents: write
@@ -34,8 +34,7 @@ jobs:
             beautifulsoup4 \
             pytz \
             lxml \
-            hazm \
-            google-generativeai
+            hazm
 
       - name: Run bot
         env:
