@@ -4,17 +4,12 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
-    inputs:
-      send_startup:
-        description: 'ارسال پیام تست شروع؟'
-        required: false
-        default: 'false'
 
 jobs:
   run-bot:
     name: Fetch & Send News
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     permissions:
       contents: write
@@ -33,12 +28,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet feedparser httpx beautifulsoup4 pytz lxml deep-translator
+          pip install --quiet feedparser httpx beautifulsoup4 pytz lxml google-generativeai
 
       - name: Run bot
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
       - name: Save seen articles
