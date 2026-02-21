@@ -9,7 +9,7 @@ jobs:
   run-bot:
     name: Fetch & Send News
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 12
 
     permissions:
       contents: write
@@ -28,7 +28,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet feedparser httpx beautifulsoup4 pytz lxml google-generativeai
+          pip install --quiet \
+            feedparser \
+            httpx \
+            beautifulsoup4 \
+            pytz \
+            lxml \
+            hazm \
+            google-generativeai
 
       - name: Run bot
         env:
