@@ -1,11 +1,4 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════╗
-║          🛡️ Military Intel Bot — Translated & Fresh News Edition         ║
-║     Iran · Israel · USA  |  RSS + Google News + Twitter/X (Nitter)      ║
-╚══════════════════════════════════════════════════════════════════════════╝
-"""
-
-import os, json, hashlib, time, re, logging, asyncio
+import os, json, hashlib, asyncio, logging
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
@@ -25,60 +18,118 @@ log = logging.getLogger("MilBot")
 BOT_TOKEN   = os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID  = os.environ.get("CHANNEL_ID", "")
 SEEN_FILE   = "seen.json"
-MAX_NEW_PER_RUN = 50          
+MAX_NEW_PER_RUN = 60          
 SEND_DELAY  = 3               
 MAX_MSG_LEN = 4000
 TEHRAN_TZ   = pytz.timezone("Asia/Tehran")
 
 # ════════════════════════════════════════════════════════════════
-# لیست منابع (خبرگزاری‌ها + توییتر + گوگل نیوز)
+# ۱. فیدهای اصلی (تایید شده و سالم)
 # ════════════════════════════════════════════════════════════════
 RSS_FEEDS = [
+    # خبرگزاری‌های بین‌المللی
     {"name": "🌐 Axios NatSec",       "url": "https://api.axios.com/feed/national-security"},
-    {"name": "🌐 Axios World",        "url": "https://api.axios.com/feed/world"},
     {"name": "🌐 Reuters Defense",    "url": "https://feeds.reuters.com/reuters/worldNews"},
     {"name": "🌐 CNN Middle East",    "url": "http://rss.cnn.com/rss/edition_meast.rss"},
     {"name": "🌐 Fox News World",     "url": "https://moxie.foxnews.com/google-publisher/world.xml"},
     {"name": "🌐 Al Jazeera",         "url": "https://www.aljazeera.com/xml/rss/all.xml"},
-    {"name": "🌐 Politico Defense",   "url": "https://rss.politico.com/defense.xml"},
     {"name": "🌐 AP Defense",         "url": "https://apnews.com/hub/military-and-defense?format=rss"},
-    {"name": "🇺🇸 Pentagon",          "url": "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=10"},
+    {"name": "🌐 Politico Defense",   "url": "https://rss.politico.com/defense.xml"},
+    
+    # رسانه‌های تخصصی نظامی آمریکا
+    {"name": "🇺🇸 Pentagon News",     "url": "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=10"},
     {"name": "🇺🇸 CENTCOM",           "url": "https://www.centcom.mil/RSS/"},
     {"name": "🇺🇸 Breaking Defense",  "url": "https://breakingdefense.com/feed/"},
+    {"name": "🇺🇸 Defense News",      "url": "https://www.defensenews.com/arc/outboundfeeds/rss/"},
+    {"name": "🇺🇸 The War Zone",      "url": "https://www.thedrive.com/feeds/the-war-zone"},
+    {"name": "🇺🇸 Military.com",      "url": "https://www.military.com/RSS/News/Defense.rss"},
+    {"name": "🇺🇸 Stars & Stripes",   "url": "https://www.stripes.com/arc/outboundfeeds/rss/?outputType=xml"},
+    {"name": "🇺🇸 C4ISRNet",          "url": "https://www.c4isrnet.com/arc/outboundfeeds/rss/"},
+    {"name": "🇺🇸 Defense One",       "url": "https://www.defenseone.com/rss/all/"},
+    
+    # رسانه‌های اسراییل
     {"name": "🇮🇱 IDF Official",      "url": "https://www.idf.il/en/mini-sites/idf-spokesperson-english/feed/"},
     {"name": "🇮🇱 Jerusalem Post",    "url": "https://www.jpost.com/rss/rssfeedsmilitary.aspx"},
     {"name": "🇮🇱 Times of Israel",   "url": "https://www.timesofisrael.com/feed/"},
     {"name": "🇮🇱 Haaretz",          "url": "https://www.haaretz.com/cmlink/1.4455099"},
+    {"name": "🇮🇱 Ynetnews",          "url": "https://www.ynetnews.com/category/3082/feed"},
+    {"name": "🇮🇱 i24 News",          "url": "https://www.i24news.tv/en/rss"},
+    
+    # رسانه‌های ایران و خاورمیانه
     {"name": "🇮🇷 Iran International","url": "https://www.iranintl.com/en/rss"},
     {"name": "🇮🇷 Radio Farda",       "url": "https://www.radiofarda.com/api/zmqpqopvp"},
     {"name": "🌐 Middle East Eye",    "url": "https://www.middleeasteye.net/rss"},
-    {"name": "🌐 ISW (Institute)",    "url": "https://www.understandingwar.org/rss.xml"},
+    {"name": "🌐 Al Monitor",         "url": "https://www.al-monitor.com/rss.xml"},
+    
+    # اندیشکده‌ها و اطلاعاتی
+    {"name": "🔍 ISW (War Study)",   "url": "https://www.understandingwar.org/rss.xml"},
+    {"name": "🔍 Bellingcat",        "url": "https://www.bellingcat.com/feed/"},
+    {"name": "🔍 CSIS",              "url": "https://www.csis.org/rss"},
+    {"name": "🔍 Long War Journal",  "url": "https://www.longwarjournal.org/feed"},
 ]
 
+# ════════════════════════════════════════════════════════════════
+# ۲. جستجوگر پیشرفته گوگل نیوز (پوشش هزاران سایت خبری)
+# ════════════════════════════════════════════════════════════════
 GOOGLE_NEWS_QUERIES = [
-    ("📰 Axios Iran",              "site:axios.com Iran Israel military attack"),
-    ("📰 Reuters Iran Israel",     "site:reuters.com Iran Israel military strike"),
-    ("⚔️ Iran Israel War",          "Iran Israel war attack strike military"),
-    ("⚔️ US Forces Middle East",    "US forces CENTCOM Iraq Syria base attack Iran"),
-    ("⚔️ Hezbollah IRGC",           "Hezbollah IRGC proxy militia Lebanon strike"),
+    # تنش ایران و اسرائیل
+    ("⚔️ Iran Israel Attack",       "Iran Israel military attack strike revenge"),
+    ("⚔️ IDF Strike Iran",          "IDF airstrike Iran IRGC base facilities"),
+    ("⚔️ Mossad Operation",         "Mossad covert operation assassination Iran"),
+    ("⚔️ Iran Drone Attack",        "Iran drone Shahed ballistic missile attack Israel"),
+    
+    # آمریکا و خاورمیانه
+    ("⚔️ US Forces Attacked",       "US forces attacked base Iraq Syria CENTCOM"),
+    ("⚔️ Pentagon Iran",            "Pentagon warning Iran military action"),
+    ("⚔️ US Navy Middle East",      "US Navy carrier strike group 5th Fleet Red Sea Gulf"),
+    
+    # گروه‌های نیابتی
+    ("⚔️ Hezbollah Conflict",       "Hezbollah IDF border strike Lebanon rockets"),
+    ("⚔️ Houthis Red Sea",          "Houthis Red Sea attack ship US Navy strike"),
+    ("⚔️ IRGC Quds Force",          "IRGC Quds Force Syria Iraq weapons smuggling"),
+    
+    # برنامه هسته‌ای و تسلیحاتی
+    ("☢️ Iran Nuclear",             "Iran nuclear enrichment Natanz Fordow IAEA centrifuge"),
+    ("🚀 Hypersonic Missile",       "Iran hypersonic ballistic missile test aerospace"),
+    ("🛡️ Iron Dome/Arrow",         "Israel Iron Dome Arrow David Sling interception"),
+    
+    # جستجوهای متمرکز در خبرگزاری‌های خاص (ایندکس لحظه‌ای)
+    ("📰 NYT Iran Military",        "site:nytimes.com Iran Israel military"),
+    ("📰 WSJ NatSec",               "site:wsj.com Iran US military defense"),
 ]
 
 def google_news_url(query: str) -> str:
     q = query.replace(" ", "+")
-    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en&num=10"
+    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en&num=15"
 
 GOOGLE_FEEDS = [{"name": name, "url": google_news_url(q), "is_google": True} for name, q in GOOGLE_NEWS_QUERIES]
 
+# ════════════════════════════════════════════════════════════════
+# ۳. توییتر / شبکه X (سریع‌ترین منبع خبرها)
+# ════════════════════════════════════════════════════════════════
 TWITTER_ACCOUNTS = [
+    # خبرنگاران ارشد
     ("📰 Barak Ravid (Axios)",      "BarakRavid"),
     ("📰 Natasha Bertrand (CNN)",   "NatashaBertrand"),
     ("📰 Idrees Ali (Reuters)",     "idreesali114"),
-    ("📰 Lucas Tomlinson (Fox)",    "LucasFoxNews"),
     ("📰 Farnaz Fassihi (NYT)",     "farnazfassihi"),
+    ("📰 Emanuel Fabian (TOI)",     "manniefabian"),
+    ("📰 Trey Yingst (Fox)",        "TreyYingst"),
+    ("📰 Joe Truzman (FDD)",        "JoeTruzman"),
+    
+    # اطلاعات باز (OSINT) و مانیتورینگ جنگ
     ("🔍 OSINT Defender",    "OSINTdefender"),
     ("🔍 Intel Crab",        "IntelCrab"),
+    ("🔍 Aurora Intel",      "AuroraIntel"),
+    ("🔍 Clash Report",      "clashreport"),
+    ("🔍 Faytuks News",      "Faytuks"),
+    ("🔍 Global: Military",  "Global_Mil_Info"),
+    ("🔍 War Monitor",       "WarMonitor3"),
+    
+    # مقامات رسمی
     ("🇮🇱 IDF Official",    "IDF"),
     ("🇺🇸 CENTCOM",         "CENTCOM"),
+    ("🇺🇸 US Dept Defense", "DeptofDefense"),
 ]
 
 NITTER_MIRRORS = [
@@ -99,14 +150,13 @@ NITTER_FEEDS = get_nitter_feeds()
 ALL_FEEDS = RSS_FEEDS + GOOGLE_FEEDS + NITTER_FEEDS
 
 # ════════════════════════════════════════════════════════════════
-# توابع پردازش و فیلتر (فقط امروز و خبرهای مرتبط)
+# توابع پردازش (فیلترهای زمانی قطعی و مرتبط بودن)
 # ════════════════════════════════════════════════════════════════
-
 def is_fresh_news(entry: dict) -> bool:
     """ فقط خبرهای 21 فوریه 2026 به بعد و حداکثر مربوط به 24 ساعت گذشته """
     try:
         t = entry.get("published_parsed") or entry.get("updated_parsed")
-        if not t: return True # در صورتی که خبر تاریخ نداشت برای از دست نرفتن تایید می‌شود
+        if not t: return True 
         
         dt = datetime(*t[:6], tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
@@ -116,7 +166,7 @@ def is_fresh_news(entry: dict) -> bool:
         if dt < cutoff:
             return False
             
-        # ۲. فیلتر شناور: خبر نباید برای بیشتر از 24 ساعت پیش باشد
+        # ۲. خبر نباید برای بیشتر از 24 ساعت پیش باشد
         if (now - dt) > timedelta(hours=24):
             return False
             
@@ -131,14 +181,41 @@ def is_relevant(entry: dict, is_twitter: bool = False) -> bool:
         str(entry.get("description", "")),
     ]).lower()
     
+    # کلمات کلیدی برای حذف خبرهای نامربوط سیاسی داخلی یا اقتصادی
     if is_twitter:
-        if any(kw in text for kw in ["iran", "israel", "us ", "strike", "war", "gaza", "lebanon", "irgc", "idf", "military", "attack", "missile"]):
+        if any(kw in text for kw in ["iran", "israel", "us ", "strike", "war", "gaza", "lebanon", "irgc", "idf", "military", "attack", "missile", "hezbollah", "houthi"]):
             return True
         return False
         
     KEYWORDS = ["iran", "irgc", "tehran", "khamenei", "israel", "idf", "mossad", "tel aviv", "netanyahu",
-                "us forces", "centcom", "pentagon", "american base", "strike", "airstrike", "سپاه", "اسرائیل", "حمله"]
+                "us forces", "centcom", "pentagon", "american base", "strike", "airstrike", "drone", "missile", "war", "حمله", "نظامی", "سپاه"]
     return any(kw in text for kw in KEYWORDS)
+
+# ════════════════════════════════════════════════════════════════
+# دانلود همزمان فیدها (Asynchronous Fetching) - سرعت بسیار بالا
+# ════════════════════════════════════════════════════════════════
+async def fetch_single_feed(client: httpx.AsyncClient, cfg: dict) -> list:
+    url = cfg["url"]
+    try:
+        response = await client.get(url, timeout=15.0, headers={"User-Agent": "Mozilla/5.0 MilNewsBot/5.0"})
+        if response.status_code == 200:
+            parsed = feedparser.parse(response.text)
+            return parsed.entries
+    except Exception as e:
+        # لاگ کردن ارورها نادیده گرفته میشود تا صفحه شلوغ نشود
+        pass
+    return []
+
+async def fetch_all_feeds_concurrently(client: httpx.AsyncClient, feeds: list) -> list:
+    tasks = [fetch_single_feed(client, cfg) for cfg in feeds]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    entries_with_cfg = []
+    for i, entries in enumerate(results):
+        if isinstance(entries, list):
+            for entry in entries:
+                entries_with_cfg.append((entry, feeds[i]))
+    return entries_with_cfg
 
 # ════════════════════════════════════════════════════════════════
 # موتور ترجمه هوشمند
@@ -147,10 +224,10 @@ def translate_to_fa(text: str) -> str:
     if not text or len(text.strip()) < 3:
         return ""
     try:
-        translated = GoogleTranslator(source='auto', target='fa').translate(text)
-        return translated
-    except Exception as e:
-        log.error(f"Translation Error: {e}")
+        # در صورت طولانی بودن متن، برای جلوگیری از ارور مترجم کوتاه میشود
+        text = text[:4000]
+        return GoogleTranslator(source='auto', target='fa').translate(text)
+    except Exception:
         return text 
 
 def clean_html(text: str) -> str:
@@ -184,9 +261,8 @@ def build_message(entry: dict, source: str, is_twitter: bool = False) -> str:
     link       = entry.get("link", "")
     dt         = format_dt(entry)
 
-    # ترجمه عنوان و خلاصه
     fa_title = escape_html(translate_to_fa(en_title))
-    fa_summary_short = escape_html(translate_to_fa(truncate(en_summary, 300)))
+    fa_summary_short = escape_html(translate_to_fa(truncate(en_summary, 350)))
     en_title_escaped = escape_html(en_title)
 
     icon = "𝕏" if is_twitter else "📡"
@@ -216,21 +292,8 @@ def load_seen() -> set:
     return set()
 
 def save_seen(seen: set):
-    recent = list(seen)[-8000:]
+    recent = list(seen)[-15000:] # افزایش حافظه به ۱۵ هزار خبر بخاطر منابع زیاد
     with open(SEEN_FILE, "w") as f: json.dump(recent, f)
-
-def fetch_feed(cfg: dict) -> list:
-    handle = cfg.get("nitter_handle")
-    mirrors = NITTER_MIRRORS if handle else [None]
-
-    for i, mirror in enumerate(mirrors):
-        url = f"{mirror}/{handle}/rss" if handle else cfg["url"]
-        try:
-            parsed = feedparser.parse(url, request_headers={"User-Agent": "Mozilla/5.0 MilNewsBot/4.0"})
-            if parsed.entries: return parsed.entries
-        except Exception:
-            pass
-    return []
 
 # ════════════════════════════════════════════════════════════════
 # ارسال به تلگرام
@@ -267,30 +330,33 @@ async def main():
 
     seen = load_seen()
     
+    log.info(f"🔄 در حال دریافت همزمان اطلاعات از {len(ALL_FEEDS)} منبع خبری...")
+    
     async with httpx.AsyncClient(follow_redirects=True) as client:
+        # مرحله ۱: دانلود همزمان تمام خبرها در چند ثانیه
+        raw_entries = await fetch_all_feeds_concurrently(client, ALL_FEEDS)
+        
         collected: list[tuple] = [] 
 
-        for cfg in ALL_FEEDS:
+        # مرحله ۲: پردازش و فیلتر کردن
+        for entry, cfg in raw_entries:
             is_tw = bool(cfg.get("nitter_handle"))
-            entries = fetch_feed(cfg)
+            eid = make_id(entry)
             
-            for entry in entries:
-                eid = make_id(entry)
+            if eid in seen:
+                continue
+            
+            # فیلتر تاریخ: فقط ۲۱ فوریه ۲۰۲۶ به بعد
+            if not is_fresh_news(entry):
+                seen.add(eid)
+                continue
+            
+            # فیلتر کلمات کلیدی
+            if not is_relevant(entry, is_twitter=is_tw):
+                seen.add(eid)
+                continue
                 
-                if eid in seen:
-                    continue
-                
-                # بررسی زمان: فقط خبرهای مربوط به ۲۱ فوریه ۲۰۲۶ به بعد
-                if not is_fresh_news(entry):
-                    seen.add(eid)
-                    continue
-                
-                # فیلتر کلمات کلیدی
-                if not is_relevant(entry, is_twitter=is_tw):
-                    seen.add(eid)
-                    continue
-                    
-                collected.append((eid, entry, cfg, is_tw))
+            collected.append((eid, entry, cfg, is_tw))
 
         # مرتب‌سازی خبرها از قدیمی‌ترین به جدیدترین
         collected = collected[::-1]
@@ -298,6 +364,7 @@ async def main():
         if len(collected) > MAX_NEW_PER_RUN:
             collected = collected[-MAX_NEW_PER_RUN:]
 
+        # مرحله ۳: ترجمه و ارسال
         sent = 0
         for eid, entry, cfg, is_tw in collected:
             msg = build_message(entry, cfg["name"], is_tw)
@@ -308,7 +375,7 @@ async def main():
             await asyncio.sleep(SEND_DELAY)
 
         save_seen(seen)
-        log.info(f"✔️ پایان | {sent} خبر جدید (امروز به بعد) ارسال شد.")
+        log.info(f"✔️ پایان | {sent} خبر جدید (امروز به بعد) از ده‌ها منبع ارسال شد.")
 
 if __name__ == "__main__":
     asyncio.run(main())
