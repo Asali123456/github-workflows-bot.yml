@@ -45,6 +45,8 @@ jobs:
             beautifulsoup4 \
             pytz \
             lxml
+           feedparser
+           deep-translator \
 
       # ─── ۴. اجرای بات ───────────────────────────────────────
       - name: Run bot
