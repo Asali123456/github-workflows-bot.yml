@@ -1,0 +1,64 @@
+name: 🛡️ Military News Bot
+
+on:
+  schedule:
+    # هر ۱ ساعت — مناسب ریپو Private (زیر ۲۰۰۰ دقیقه رایگان/ماه)
+    # برای هر ۳۰ دقیقه: '*/30 * * * *'  (نیاز به GitHub Pro - $4/ماه)
+    - cron: '0 * * * *'
+  workflow_dispatch:   # اجرای دستی از پنل GitHub
+    inputs:
+      send_startup:
+        description: 'پیام شروع بفرسته؟'
+        required: false
+        default: 'false'
+
+jobs:
+  run-bot:
+    name: Fetch & Send News
+    runs-on: ubuntu-latest
+    timeout-minutes: 8    # اگه گیر کرد بعد ۸ دقیقه کنسل شه
+
+    permissions:
+      contents: write     # برای commit کردن seen.json
+
+    steps:
+      # ─── ۱. دانلود کد ───────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      # ─── ۲. پایتون ──────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ─── ۳. نصب وابستگی‌ها ──────────────────────────────────
+      - name: Install dependencies
+        run: |
+          pip install --quiet \
+            feedparser \
+            httpx \
+            beautifulsoup4 \
+            pytz \
+            lxml
+
+      # ─── ۴. اجرای بات ───────────────────────────────────────
+      - name: Run bot
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: python bot.py
+
+      # ─── ۵. ذخیره seen.json در ریپو ─────────────────────────
+      - name: Save seen articles
+        if: always()    # حتی اگه خطا داد ذخیره کن
+        run: |
+          git config user.name  "Military Bot"
+          git config user.email "bot@noreply.github.com"
+          git add seen.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "♻️ update seen [skip ci]"
+          git push 2>/dev/null || true
