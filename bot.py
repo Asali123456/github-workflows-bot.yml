@@ -30,11 +30,14 @@ CHANNEL_ID     = os.environ.get("CHANNEL_ID", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 SEEN_FILE       = "seen.json"
-MAX_NEW_PER_RUN = 30
-MAX_MSG_LEN     = 4096   # FIX: این متغیر قبلاً تعریف نشده بود — باعث crash می‌شد
+MAX_NEW_PER_RUN = 20     # با ۱۰ دقیقه interval کافیه
+MAX_MSG_LEN     = 4096
 SEND_DELAY      = 2
 TEHRAN_TZ       = pytz.timezone("Asia/Tehran")
-NEWS_CUTOFF     = datetime(2026, 2, 22, 0, 0, 0, tzinfo=timezone.utc)
+
+# ساعت ۳:۱۸ تهران (UTC+3:30) = ۲۳:۴۸ UTC روز ۲۱ فوریه
+# هیچ خبری قبل از این لحظه ارسال نمی‌شود — سخت‌گیرانه
+NEWS_CUTOFF = datetime(2026, 2, 21, 23, 48, 0, tzinfo=timezone.utc)
 
 RSS_FEEDS = [
     {"name": "🌐 Reuters World",       "url": "https://feeds.reuters.com/reuters/worldNews"},
@@ -187,11 +190,15 @@ KEYWORDS = [
 ]
 
 def is_fresh(entry):
+    """فقط خبرهای بعد از ۰۳:۱۸ تهران ۲۲ فوریه — سخت‌گیرانه"""
     try:
         t = entry.get("published_parsed") or entry.get("updated_parsed")
-        if not t: return True
-        return datetime(*t[:6], tzinfo=timezone.utc) >= NEWS_CUTOFF
-    except: return True
+        if not t:
+            return False  # خبر بدون تاریخ رد می‌شود
+        dt = datetime(*t[:6], tzinfo=timezone.utc)
+        return dt >= NEWS_CUTOFF
+    except:
+        return False  # در صورت خطا رد می‌شود
 
 def is_relevant(entry, is_twitter=False):
     text = " ".join([str(entry.get("title","")), str(entry.get("summary","")),
@@ -228,41 +235,81 @@ async def fetch_all(client):
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 async def translate(client, title, summary):
-    if not GEMINI_API_KEY or len(title) < 5:
+    """ترجمه به فارسی — هر زبانی (انگلیسی، عبری، عربی، ...) → فارسی روان خبری"""
+    if not GEMINI_API_KEY or len(title) < 3:
         return title, summary
-    prompt = f"""تو یک مترجم خبر نظامی هستی. متن زیر را به فارسی روان و خبری ترجمه کن.
-قوانین: فقط ترجمه بنویس، هیچ توضیح اضافی نده. لحن رسمی خبری داشته باش.
-فرمت دقیقاً:
-[عنوان فارسی]
----
-[متن فارسی]
 
+    prompt = f"""وظیفه: ترجمه دقیق خبر نظامی به فارسی
+زبان ورودی: هر زبانی ممکن است (انگلیسی، عبری، عربی، ...)
+خروجی: فقط فارسی روان و خبری — بدون هیچ توضیح، پرانتز، یا حاشیه
+
+قوانین سخت:
+۱. فقط ترجمه بنویس
+۲. اسامی خاص را نگه دار (نتانیاهو، خامنه‌ای، سپاه، ناتو...)
+۳. لحن رسمی خبرگزاری داشته باش
+۴. اگر جمله‌ای ناقص است، کامل ترجمه کن
+
+فرمت خروجی دقیقاً:
+عنوان: [ترجمه عنوان]
+---
+متن: [ترجمه متن]
+
+===ورودی===
 عنوان: {title[:500]}
 متن: {summary[:800]}"""
-    try:
-        r = await client.post(f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json={"contents":[{"parts":[{"text":prompt}]}],
-                  "generationConfig":{"temperature":0.1,"maxOutputTokens":1024}},
-            timeout=httpx.Timeout(20.0))
-        if r.status_code == 200:
-            raw = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-            parts = raw.split("---", 1)
-            if len(parts) == 2:
-                return normalize_fa(parts[0].strip()), normalize_fa(parts[1].strip())
-            return normalize_fa(raw), summary
-        elif r.status_code == 429:
-            await asyncio.sleep(10)
-    except Exception as e:
-        log.debug(f"Gemini: {e}")
-    return title, summary
+
+    for attempt in range(2):
+        try:
+            r = await client.post(
+                f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.05, "maxOutputTokens": 1200}
+                },
+                timeout=httpx.Timeout(25.0)
+            )
+            if r.status_code == 200:
+                raw = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                # پردازش خروجی
+                raw = re.sub(r'^عنوان:\s*', '', raw, flags=re.MULTILINE)
+                raw = re.sub(r'^متن:\s*', '', raw, flags=re.MULTILINE)
+                parts = raw.split("---", 1)
+                if len(parts) == 2:
+                    fa_t = normalize_fa(parts[0].strip().replace("**",""))
+                    fa_s = normalize_fa(parts[1].strip().replace("**",""))
+                    return fa_t, fa_s
+                else:
+                    return normalize_fa(raw.strip()), ""
+            elif r.status_code == 429:
+                wait = int(r.headers.get("Retry-After", 15))
+                log.warning(f"⏳ Gemini rate limit — {wait}s")
+                await asyncio.sleep(wait)
+            elif r.status_code == 503:
+                await asyncio.sleep(5)
+            else:
+                log.debug(f"Gemini {r.status_code}")
+                break
+        except Exception as e:
+            log.debug(f"Gemini: {e}")
+            if attempt == 0:
+                await asyncio.sleep(3)
+
+    return title, summary  # fallback: متن اصلی
 
 def clean_html(text):
     if not text: return ""
     return BeautifulSoup(str(text), "html.parser").get_text(" ", strip=True)
 
 def make_id(entry):
+    """ID اصلی بر اساس لینک"""
     key = entry.get("link") or entry.get("id") or entry.get("title") or ""
     return hashlib.md5(key.encode("utf-8")).hexdigest()
+
+def make_title_id(title: str) -> str:
+    """ID ثانویه بر اساس عنوان — جلوگیری از خبر تکراری از منابع مختلف"""
+    # پاک‌سازی و نرمال‌سازی عنوان برای مقایسه
+    t = re.sub(r'[^a-z0-9\u0600-\u06FF]', '', title.lower())
+    return "t:" + hashlib.md5(t.encode("utf-8")).hexdigest()
 
 def format_dt(entry):
     try:
@@ -310,19 +357,27 @@ async def main():
         log.error("❌ BOT_TOKEN یا CHANNEL_ID تنظیم نشده!"); return
 
     seen = load_seen()
-    log.info(f"🚀 {len(ALL_FEEDS)} منبع | {len(seen)} در حافظه | cutoff: {NEWS_CUTOFF.date()}")
+    tehran_cutoff = NEWS_CUTOFF.astimezone(TEHRAN_TZ).strftime("%Y/%m/%d %H:%M")
+    log.info(f"🚀 {len(ALL_FEEDS)} منبع | {len(seen)} در حافظه")
+    log.info(f"📅 Cutoff: {tehran_cutoff} تهران (فقط خبرهای بعد از این)")
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         raw = await fetch_all(client)
         log.info(f"📥 {len(raw)} آیتم دریافت — فیلتر...")
 
         collected = []
+        title_seen = set()  # dedup اضافی بر اساس عنوان — جلوگیری از خبر تکراری از چند منبع
         for entry, cfg in raw:
             eid = make_id(entry)
             if eid in seen: continue
             if not is_fresh(entry): seen.add(eid); continue
             is_tw = bool(cfg.get("nitter_handle"))
             if not is_relevant(entry, is_twitter=is_tw): seen.add(eid); continue
+            # بررسی تکراری بودن عنوان
+            raw_title = clean_html(entry.get("title",""))
+            tid = make_title_id(raw_title)
+            if tid in title_seen: seen.add(eid); continue
+            title_seen.add(tid)
             collected.append((eid, entry, cfg, is_tw))
 
         collected = list(reversed(collected))
