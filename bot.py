@@ -272,35 +272,157 @@ async def fetch_all(client: httpx.AsyncClient) -> list:
 # ✅ Fix2: Gemini — dual-model + exponential backoff
 # ════════════════════════════════════════════════════════════════
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-# مدل اصلی و fallback با quota جداگانه
-GEMINI_MODELS = [
-    "gemini-2.0-flash",       # اصلی: 15 RPM رایگان
-    "gemini-1.5-flash",       # fallback: quota جداگانه
-    "gemini-1.5-flash-8b",    # آخرین fallback: سبک‌تر
+
+# ════════════════════════════════════════════════════════════════
+# ✅ استراتژی چند-مدلی هوشمند — بهینه‌سازی quota
+# ════════════════════════════════════════════════════════════════
+#
+# هر مدل quota مستقل دارد → مجموع ظرفیت روزانه = 2,700 RPD
+#
+# اولویت       مدل                              RPM   RPD
+# ──────────────────────────────────────────────────────────
+# TIER-1 (80%) gemini-2.5-flash-lite             15  1,000  ← primary
+# TIER-1 (80%) gemini-2.5-flash-lite-preview     15  1,000  ← quota جداگانه
+# TIER-2 (15%) gemini-2.5-flash                  10    250  ← کیفیت بهتر
+# TIER-2 (15%) gemini-2.5-flash-preview-09-2025  10    250  ← quota جداگانه
+# TIER-3 (5%)  gemini-3-flash-preview            10    100  ← جدیدترین
+# TIER-3 (5%)  gemini-2.5-pro                     5    100  ← قوی‌ترین
+# TIER-3 (5%)  gemini-3-pro-preview               5     50  ← جدیدترین Pro
+#
+# ❌ gemini-2.0-flash → DEPRECATED (shutdown 31 March 2026) حذف شد
+# ────────────────────────────────────────────────────────────────────
+# نیاز بات: 144 call/روز (هر ۱۰ دقیقه)
+# ظرفیت مجموع: 2,750 RPD = ضریب ایمنی 19x
+# ════════════════════════════════════════════════════════════════
+
+# ترتیب: ارزان‌ترین/سریع‌ترین اول، قوی‌ترین/کمیاب‌ترین آخر
+GEMINI_MODEL_POOL = [
+    # ── TIER 1: Flash-Lite — 1000 RPD × 2 = 2000 RPD ──
+    {
+        "id":    "gemini-2.5-flash-lite",
+        "rpm":   15, "rpd": 1000,
+        "label": "Flash-Lite",
+        "tier":  1,
+    },
+    {
+        "id":    "gemini-2.5-flash-lite-preview-09-2025",
+        "rpm":   15, "rpd": 1000,
+        "label": "Flash-Lite-Preview",
+        "tier":  1,
+    },
+    # ── TIER 2: Flash — 250 RPD × 2 = 500 RPD ──
+    {
+        "id":    "gemini-2.5-flash",
+        "rpm":   10, "rpd": 250,
+        "label": "Flash",
+        "tier":  2,
+    },
+    {
+        "id":    "gemini-2.5-flash-preview-09-2025",
+        "rpm":   10, "rpd": 250,
+        "label": "Flash-Preview",
+        "tier":  2,
+    },
+    # ── TIER 3: Frontier — فقط fallback ──
+    {
+        "id":    "gemini-3-flash-preview",
+        "rpm":   10, "rpd": 100,
+        "label": "Gemini3-Flash",
+        "tier":  3,
+    },
+    {
+        "id":    "gemini-2.5-pro",
+        "rpm":   5, "rpd": 100,
+        "label": "Pro",
+        "tier":  3,
+    },
+    {
+        "id":    "gemini-3-pro-preview",
+        "rpm":   5, "rpd": 50,
+        "label": "Gemini3-Pro",
+        "tier":  3,
+    },
 ]
+
+# فایل state برای ذخیره وضعیت rotation
+GEMINI_STATE_FILE = "gemini_state.json"
+
+def load_gemini_state() -> dict:
+    """بارگذاری وضعیت مدل‌ها از فایل"""
+    try:
+        if Path(GEMINI_STATE_FILE).exists():
+            with open(GEMINI_STATE_FILE) as f:
+                state = json.load(f)
+            # reset اگه روز جدید است (quota روزانه reset شده)
+            last_date = state.get("date", "")
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if last_date != today:
+                log.info(f"🔄 روز جدید — reset quota counters")
+                return _fresh_state(today)
+            return state
+    except:
+        pass
+    return _fresh_state(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+
+def _fresh_state(today: str) -> dict:
+    return {
+        "date":          today,
+        "model_index":   0,          # چرخش round-robin
+        "usage":         {m["id"]: 0 for m in GEMINI_MODEL_POOL},
+        "failures":      {m["id"]: 0 for m in GEMINI_MODEL_POOL},
+    }
+
+def save_gemini_state(state: dict):
+    with open(GEMINI_STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+def pick_model(state: dict) -> list[dict]:
+    """
+    انتخاب هوشمند مدل‌ها با ترتیب اولویت:
+    1. مدل‌های Tier-1 که هنوز quota دارند
+    2. مدل‌های Tier-2
+    3. مدل‌های Tier-3 (fallback)
+    مدلی که بیش از ۳ بار پشت‌سرهم fail شده موقتاً کنار می‌رود
+    """
+    ordered = []
+    for tier in [1, 2, 3]:
+        tier_models = [m for m in GEMINI_MODEL_POOL if m["tier"] == tier]
+        for m in tier_models:
+            mid = m["id"]
+            used = state["usage"].get(mid, 0)
+            fails = state["failures"].get(mid, 0)
+            remaining = m["rpd"] - used
+            if remaining > 0 and fails < 3:
+                ordered.append(m)
+    return ordered if ordered else GEMINI_MODEL_POOL  # fallback به همه
+
 
 async def translate_batch(
     client: httpx.AsyncClient,
     articles: list[tuple[str, str]]
 ) -> list[tuple[str, str]]:
+    """
+    ترجمه دسته‌ای با round-robin هوشمند روی همه مدل‌های Gemini.
+    هر مدل quota مستقل دارد → مجموع ظرفیت = 2,750 RPD/روز.
+    """
     if not GEMINI_API_KEY or not articles:
         return articles
 
+    # ساخت prompt
     items_text = ""
     for i, (title, summary) in enumerate(articles):
-        items_text += f"###ITEM_{i}###\nTITLE: {title[:300]}\nBODY: {summary[:450]}\n"
+        items_text += f"###ITEM_{i}###\nTITLE: {title[:300]}\nBODY: {summary[:400]}\n"
 
     prompt = f"""ترجمه {len(articles)} خبر نظامی به فارسی روان و خبری.
-قوانین: فقط ترجمه، بدون توضیح. اسامی خاص دقیق. لحن رسمی خبرگزاری.
+قوانین: فقط ترجمه، بدون توضیح. اسامی خاص دقیق (نتانیاهو، خامنه‌ای، سپاه، ناتو...). لحن رسمی خبرگزاری.
 
-فرمت خروجی دقیقاً:
+فرمت دقیق:
 ###ITEM_0###
 عنوان: [ترجمه]
 متن: [ترجمه]
 ###ITEM_1###
 عنوان: [ترجمه]
 متن: [ترجمه]
-...
 
 ===خبرها===
 {items_text}"""
@@ -310,49 +432,62 @@ async def translate_batch(
         "generationConfig": {"temperature": 0.05, "maxOutputTokens": 8192}
     }
 
-    # امتحان هر مدل به ترتیب
-    for model in GEMINI_MODELS:
-        url = f"{GEMINI_BASE}/{model}:generateContent?key={GEMINI_API_KEY}"
-        wait = 35  # شروع با ۳۵ ثانیه
+    # بارگذاری وضعیت rotation
+    state = load_gemini_state()
+    candidates = pick_model(state)
 
-        for attempt in range(3):
+    for model in candidates:
+        mid   = model["id"]
+        label = model["label"]
+        url   = f"{GEMINI_BASE}/{mid}:generateContent?key={GEMINI_API_KEY}"
+        used  = state["usage"].get(mid, 0)
+        rem   = model["rpd"] - used
+
+        log.info(f"🌐 Gemini [{label}] | quota امروز: {used}/{model['rpd']} ({rem} مانده)")
+
+        for attempt in range(2):
             try:
-                log.info(f"🌐 Gemini [{model}] — attempt {attempt+1}")
                 r = await client.post(url, json=payload, timeout=httpx.Timeout(90.0))
 
                 if r.status_code == 200:
                     raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
                     result = _parse_batch(raw, articles)
                     ok = sum(1 for i, x in enumerate(result) if x != articles[i])
-                    log.info(f"✅ Gemini [{model}]: {ok}/{len(articles)} ترجمه شد")
+                    log.info(f"✅ [{label}]: {ok}/{len(articles)} ترجمه — quota used: {used+1}")
+                    # آپدیت وضعیت
+                    state["usage"][mid] = used + 1
+                    state["failures"][mid] = 0
+                    save_gemini_state(state)
                     return result
 
                 elif r.status_code == 429:
                     retry_h = r.headers.get("Retry-After", "")
-                    wait_s  = int(retry_h) if retry_h.isdigit() else wait
-                    log.warning(f"⏳ Gemini [{model}] 429 — {wait_s}s صبر (attempt {attempt+1})")
-                    await asyncio.sleep(wait_s)
-                    wait = min(wait * 2, 120)  # exponential backoff تا ۲ دقیقه
+                    wait_s  = int(retry_h) if retry_h.isdigit() else 30
+                    log.warning(f"⏳ [{label}] 429 quota تموم — {wait_s}s صبر → مدل بعدی")
+                    state["failures"][mid] = state["failures"].get(mid, 0) + 1
+                    await asyncio.sleep(min(wait_s, 15))  # حداکثر ۱۵ ثانیه صبر
+                    break  # سریع به مدل بعدی برو
 
-                elif r.status_code == 503:
-                    log.warning(f"⏳ Gemini [{model}] 503 — 20s")
-                    await asyncio.sleep(20)
+                elif r.status_code in (503, 500):
+                    log.warning(f"⏳ [{label}] {r.status_code} — 10s")
+                    await asyncio.sleep(10)
 
                 else:
-                    log.warning(f"Gemini [{model}] {r.status_code}")
-                    break  # این مدل کار نمی‌کند، بعدی
+                    log.warning(f"[{label}] HTTP {r.status_code}")
+                    break
 
             except asyncio.TimeoutError:
-                log.warning(f"⏳ Gemini [{model}] timeout")
-                await asyncio.sleep(10)
+                log.warning(f"⏳ [{label}] timeout — مدل بعدی")
+                break
             except Exception as e:
-                log.debug(f"Gemini [{model}]: {e}")
+                log.debug(f"[{label}]: {e}")
                 break
 
-        log.warning(f"⚠️ Gemini [{model}] شکست — مدل بعدی")
+        log.info(f"  ↳ [{label}] شکست — مدل بعدی امتحان می‌شود")
 
-    # اگه همه مدل‌ها شکست خوردن، متن اصلی انگلیسی
+    # همه مدل‌ها شکست — متن اصلی
     log.warning("⚠️ همه مدل‌های Gemini شکست — خبر به انگلیسی ارسال می‌شود")
+    save_gemini_state(state)
     return articles
 
 
