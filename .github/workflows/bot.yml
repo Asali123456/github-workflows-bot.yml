@@ -7,34 +7,24 @@ on:
 
 jobs:
   run-bot:
-    name: Fetch & Send News
     runs-on: ubuntu-latest
-    timeout-minutes: 8   # کمتر از ۱۰ دقیقه تا تداخل نشه
+    timeout-minutes: 8
 
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          pip install --quiet \
-            feedparser \
-            httpx \
-            beautifulsoup4 \
-            pytz \
-            lxml \
-            hazm
+        run: pip install --quiet feedparser httpx beautifulsoup4 pytz lxml hazm
 
       - name: Run bot
         env:
@@ -43,10 +33,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
-      - name: Save seen articles
+      - name: Save seen.json
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add seen.json 2>/dev/null || true
-          git diff --staged --quiet || (git commit -m "♻️ update seen.json [skip ci]" && git push)
+          git diff --staged --quiet || (git commit -m "♻️ [skip ci]" && git push)
