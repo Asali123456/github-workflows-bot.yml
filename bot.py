@@ -369,60 +369,124 @@ async def fetch_all(client: httpx.AsyncClient) -> list:
 # ════════════════════════════════════════════════════════════════
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
-async def translate(client: httpx.AsyncClient, title: str, summary: str) -> tuple[str, str]:
-    if not GEMINI_API_KEY or len(title.strip()) < 3:
-        return title, summary
+# ════════════════════════════════════════════════════════════════
+# ✅ ترجمه دسته‌ای — همه خبرها در یک درخواست
+# ════════════════════════════════════════════════════════════════
+# مشکل قبلی: ۲۰ خبر × ۱ درخواست = ۲۰ call/دقیقه → 429
+# راه‌حل:    ۲۰ خبر × ۱ درخواست = ۱ call/دقیقه  → ✅
+#
+# Gemini 2.0 Flash رایگان: ۱۵ RPM, ۱ میلیون TPM
+# یک batch 20 خبری ≈ 6000 token → کاملاً داخل سقف
+# ════════════════════════════════════════════════════════════════
 
-    prompt = f"""وظیفه: ترجمه دقیق خبر نظامی به فارسی روان.
-زبان ورودی: هر زبانی (انگلیسی، عبری، عربی...)
-خروجی: فقط فارسی — بدون توضیح، بدون پرانتز
+async def translate_batch(
+    client: httpx.AsyncClient,
+    articles: list[tuple[str, str]]   # list of (title, summary)
+) -> list[tuple[str, str]]:           # list of (fa_title, fa_summary)
+    """
+    همه خبرها را در یک درخواست Gemini ترجمه می‌کند.
+    اگر API در دسترس نباشد، متن اصلی برمی‌گردد.
+    """
+    if not GEMINI_API_KEY or not articles:
+        return articles
 
-قوانین:
-۱. فقط ترجمه، هیچ چیز اضافه
-۲. اسامی خاص را حفظ کن (نتانیاهو، خامنه‌ای، ناتو، IRGC...)
-۳. لحن رسمی خبرگزاری
-۴. اگر متن کوتاه است، ترجمه کوتاه بنویس
+    # ── ساخت prompt با جداکننده ──
+    items_text = ""
+    for i, (title, summary) in enumerate(articles):
+        items_text += f"""
+###ITEM_{i}###
+TITLE: {title[:350]}
+BODY: {summary[:500]}
+"""
 
-فرمت دقیق:
-عنوان: [ترجمه]
----
-متن: [ترجمه]
+    prompt = f"""تو یک مترجم ارشد خبرگزاری هستی. {len(articles)} خبر نظامی زیر را به فارسی روان ترجمه کن.
 
-===
-عنوان: {title[:400]}
-متن: {summary[:700]}"""
+قوانین سخت:
+- فقط ترجمه بنویس، هیچ توضیح یا کامنت اضافه نکن
+- اسامی خاص را دقیق ترجمه کن: نتانیاهو، خامنه‌ای، سپاه، ناتو، IRGC، IDF...
+- لحن رسمی خبرگزاری (مثل ایرنا یا تسنیم)
+- فرمت خروجی باید دقیقاً اینطور باشد:
 
-    for attempt in range(2):
+###ITEM_0###
+عنوان: [ترجمه عنوان]
+متن: [ترجمه متن]
+###ITEM_1###
+عنوان: [ترجمه عنوان]
+متن: [ترجمه متن]
+... و به همین ترتیب برای همه آیتم‌ها
+
+===خبرها===
+{items_text}"""
+
+    for attempt in range(3):
         try:
             r = await client.post(
                 f"{GEMINI_URL}?key={GEMINI_API_KEY}",
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.05, "maxOutputTokens": 1024}
+                    "generationConfig": {
+                        "temperature": 0.05,
+                        "maxOutputTokens": 8192   # برای ۲۰ خبر کافیه
+                    }
                 },
-                timeout=httpx.Timeout(25.0)
+                timeout=httpx.Timeout(60.0)   # batch نیاز به timeout بیشتر دارد
             )
-            if r.status_code == 200:
-                raw = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                raw = re.sub(r'^(عنوان|متن):\s*', '', raw, flags=re.MULTILINE)
-                raw = raw.replace("**", "").replace("*", "")
-                parts = raw.split("---", 1)
-                if len(parts) == 2:
-                    return nfa(parts[0].strip()), nfa(parts[1].strip())
-                return nfa(raw.strip()), ""
-            elif r.status_code == 429:
-                wait = int(r.headers.get("Retry-After", 20))
-                log.warning(f"⏳ Gemini rate limit {wait}s")
-                await asyncio.sleep(wait)
-            else:
-                log.debug(f"Gemini {r.status_code}")
-                break
-        except Exception as e:
-            log.debug(f"Gemini: {e}")
-            if attempt == 0:
-                await asyncio.sleep(3)
 
-    return title, summary
+            if r.status_code == 200:
+                raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                return _parse_batch_response(raw, articles)
+
+            elif r.status_code == 429:
+                retry_after = int(r.headers.get("Retry-After", 30))
+                log.warning(f"⏳ Gemini rate limit — {retry_after}s صبر")
+                await asyncio.sleep(retry_after + 5)
+
+            elif r.status_code == 503:
+                log.warning("⏳ Gemini در دسترس نیست — 15s")
+                await asyncio.sleep(15)
+
+            else:
+                log.warning(f"Gemini {r.status_code}: {r.text[:120]}")
+                break
+
+        except asyncio.TimeoutError:
+            log.warning(f"⏳ Gemini timeout (attempt {attempt+1})")
+            await asyncio.sleep(5)
+        except Exception as e:
+            log.debug(f"Gemini error: {e}")
+            if attempt < 2:
+                await asyncio.sleep(5)
+
+    # fallback: متن اصلی انگلیسی
+    log.warning("⚠️ ترجمه ناموفق — متن اصلی ارسال می‌شود")
+    return articles
+
+
+def _parse_batch_response(
+    raw: str,
+    fallback: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """پارس کردن خروجی batch Gemini"""
+    results = list(fallback)   # fallback به متن اصلی
+
+    # پیدا کردن هر آیتم با regex
+    pattern = re.compile(
+        r'###ITEM_(\d+)###\s*\n'
+        r'(?:عنوان|title)\s*:\s*(.+?)\s*\n'
+        r'(?:متن|body|text)\s*:\s*(.+?)(?=###ITEM_|\Z)',
+        re.IGNORECASE | re.DOTALL
+    )
+
+    for m in pattern.finditer(raw):
+        idx  = int(m.group(1))
+        fa_t = m.group(2).strip().replace("**", "").replace("*", "")
+        fa_s = m.group(3).strip().replace("**", "").replace("*", "")
+        if 0 <= idx < len(results) and fa_t:
+            results[idx] = (nfa(fa_t), nfa(fa_s))
+
+    parsed = sum(1 for i, r in enumerate(results) if r != fallback[i])
+    log.info(f"🌐 Gemini batch: {parsed}/{len(fallback)} ترجمه شد")
+    return results
 
 # ════════════════════════════════════════════════════════════════
 # ابزارها
@@ -555,26 +619,33 @@ async def main():
             log.warning(f"⚠️ {len(collected)} → محدود به {MAX_NEW_PER_RUN}")
             collected = collected[-MAX_NEW_PER_RUN:]
 
-        # ── ترجمه و ارسال ──
-        sent = 0
+        # ── ترجمه دسته‌ای — یک درخواست برای همه خبرها ──
+        log.info(f"🌐 ترجمه دسته‌ای {len(collected)} خبر در یک درخواست Gemini...")
+
+        articles_in = []
         for eid, entry, cfg, is_tw in collected:
             en_title = trim(clean_html(entry.get("title", "")), 300)
-            en_sum   = trim(clean_html(entry.get("summary") or entry.get("description") or ""), 700)
-            link     = entry.get("link", "")
-            dt       = format_dt(entry)
-            icon     = "𝕏" if is_tw else "📡"
+            en_sum   = trim(clean_html(entry.get("summary") or entry.get("description") or ""), 450)
+            articles_in.append((en_title, en_sum))
 
-            log.info(f"🔄 {en_title[:55]}...")
-            fa_title, fa_sum = await translate(client, en_title, en_sum)
+        translations = await translate_batch(client, articles_in)
 
-            # ساخت پیام
+        # ── ارسال به تلگرام ──
+        sent = 0
+        for i, (eid, entry, cfg, is_tw) in enumerate(collected):
+            en_title        = articles_in[i][0]
+            fa_title, fa_sum = translations[i]
+            link  = entry.get("link", "")
+            dt    = format_dt(entry)
+            icon  = "𝕏" if is_tw else "📡"
+
             lines = [f"🔴 <b>{esc(fa_title)}</b>", ""]
             if fa_sum and len(fa_sum) > 10 and fa_sum.lower() not in fa_title.lower():
                 lines += [esc(fa_sum), ""]
             lines += ["─────────────", f"📌 <i>{esc(en_title)}</i>"]
-            if dt:    lines.append(dt)
+            if dt:   lines.append(dt)
             lines.append(f"{icon} <b>{cfg['name']}</b>")
-            if link:  lines.append(f'🔗 <a href="{link}">منبع</a>')
+            if link: lines.append(f'🔗 <a href="{link}">منبع</a>')
 
             if await tg_send(client, "\n".join(lines)):
                 seen.add(eid)
