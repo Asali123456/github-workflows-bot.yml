@@ -1,42 +1,57 @@
-name: 🛡️ Iran-USA-Israel War Bot
+name: 🛡️ Iran-USA-Israel War Bot v13
 
 on:
   schedule:
-    - cron: '*/5 * * * *'    # ← هر ۵ دقیقه
+    - cron: '*/5 * * * *'    # هر ۵ دقیقه
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 4        # ← ۵ دقیقه cron، ۴ دقیقه timeout
+    timeout-minutes: 4
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: Install dependencies
         run: |
-          pip install --quiet feedparser httpx beautifulsoup4 pytz lxml hazm
+          pip install --quiet \
+            feedparser \
+            httpx \
+            beautifulsoup4 \
+            pytz \
+            lxml \
+            hazm \
+            Pillow
 
-      - name: Run bot
+      - name: Run War Bot
         env:
           BOT_TOKEN:      ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID:     ${{ secrets.CHANNEL_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
-      - name: Save state files
+      - name: Commit state files
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add seen.json gemini_state.json 2>/dev/null || true
-          git diff --staged --quiet || (git commit -m "♻️ state [skip ci]" && git push)
+          git add \
+            seen.json \
+            title_hashes.json \
+            gemini_state.json \
+            flight_alerts.json \
+            2>/dev/null || true
+          git diff --staged --quiet || \
+            (git commit -m "♻️ state update [skip ci]" && git push)
