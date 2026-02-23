@@ -2,13 +2,13 @@ name: 🛡️ Iran-USA-Israel War Bot
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'    # ← هر ۵ دقیقه
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 4        # ← ۵ دقیقه cron، ۴ دقیقه timeout
     permissions:
       contents: write
 
@@ -22,20 +22,21 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install
-        run: pip install --quiet feedparser httpx beautifulsoup4 pytz lxml hazm
+      - name: Install dependencies
+        run: |
+          pip install --quiet feedparser httpx beautifulsoup4 pytz lxml hazm
 
-      - name: Run
+      - name: Run bot
         env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          BOT_TOKEN:      ${{ secrets.BOT_TOKEN }}
+          CHANNEL_ID:     ${{ secrets.CHANNEL_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
-      - name: Save state
+      - name: Save state files
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add seen.json gemini_state.json nitter_cache.json 2>/dev/null || true
-          git diff --staged --quiet || (git commit -m "♻️ [skip ci]" && git push)
+          git add seen.json gemini_state.json 2>/dev/null || true
+          git diff --staged --quiet || (git commit -m "♻️ state [skip ci]" && git push)
