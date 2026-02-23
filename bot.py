@@ -288,16 +288,91 @@ TWITTER_HANDLES = [
     ("⚠️ DEFCONLevel",            "DEFCONLevel"),
 ]
 
-NITTER_INSTANCES = [
-    "https://nitter.poast.org",           # پایدارترین — اول امتحان می‌شه
-    "https://xcancel.com",                # پایدار با Cloudflare
-    "https://twiiit.com",                 # پروکسی هوشمند → سرور فعال
-    "https://nitter.cz",                  # ریدایرکت به سرور خوب
+# ── لیست پایه (fallback اگه status.d420.de در دسترس نبود)
+#    منبع: github.com/wiki/zedeus/nitter/Instances.md  — تأیید شده ۲۰۲۶
+NITTER_FALLBACK = [
+    "https://xcancel.com",
+    "https://nitter.poast.org",
     "https://nitter.privacyredirect.com",
+    "https://lightbrd.com",
+    "https://nitter.space",
     "https://nitter.tiekoetter.com",
     "https://nuku.trabun.org",
     "https://nitter.catsarch.com",
 ]
+
+NITTER_CACHE_FILE = "nitter_cache.json"
+NITTER_CACHE_TTL  = 3600      # ۱ ساعت (API rate-limit رعایت می‌شه)
+_nitter_cache: list[str] = []  # کش در‌حافظه برای هر اجرا
+
+def _load_nitter_cache() -> tuple[list[str], float]:
+    """بارگذاری از فایل — (instances, timestamp)"""
+    try:
+        if Path(NITTER_CACHE_FILE).exists():
+            d = json.load(open(NITTER_CACHE_FILE))
+            return d.get("instances", []), d.get("ts", 0.0)
+    except: pass
+    return [], 0.0
+
+def _save_nitter_cache(instances: list[str]):
+    json.dump({"instances": instances, "ts": datetime.now(timezone.utc).timestamp()},
+              open(NITTER_CACHE_FILE, "w"))
+
+async def get_nitter_instances(client: httpx.AsyncClient) -> list[str]:
+    """
+    دریافت لیست instance های فعال از status.d420.de/api/v1/instances
+    - مرتب‌شده بر اساس امتیاز (بهترین اول)
+    - کش ۱ ساعته برای رعایت rate-limit سایت
+    - fallback به لیست ثابت در صورت خطا
+    """
+    global _nitter_cache
+
+    # اگه کش حافظه پر است، استفاده کن
+    if _nitter_cache:
+        return _nitter_cache
+
+    # بررسی کش فایل
+    cached, ts = _load_nitter_cache()
+    if cached and (datetime.now(timezone.utc).timestamp() - ts) < NITTER_CACHE_TTL:
+        log.info(f"🔌 Nitter: {len(cached)} instance از کش ({int((NITTER_CACHE_TTL-(datetime.now(timezone.utc).timestamp()-ts))//60)} دقیقه تا بروزرسانی)")
+        _nitter_cache = cached
+        return cached
+
+    # واکشی تازه از status.d420.de
+    try:
+        r = await client.get(
+            "https://status.d420.de/api/v1/instances",
+            headers={"User-Agent": "WarBot/13 (instance-checker; not scraping)"},
+            timeout=httpx.Timeout(10.0)
+        )
+        if r.status_code == 200:
+            data = r.json()
+            # فیلتر: فعال + HTTPS + مرتب بر اساس points
+            active = []
+            for inst in data:
+                url = inst.get("url","").rstrip("/")
+                if not url.startswith("https://"): continue
+                healthy = inst.get("healthy", inst.get("up", False))
+                points  = float(inst.get("points", 0))
+                if healthy or points > 50:
+                    active.append((url, points))
+
+            active.sort(key=lambda x: x[1], reverse=True)
+            result = [url for url, _ in active[:12]]  # حداکثر ۱۲ تا
+
+            if result:
+                log.info(f"✅ status.d420.de: {len(result)} instance فعال (max-points={active[0][1]:.0f})")
+                _save_nitter_cache(result)
+                _nitter_cache = result
+                return result
+    except Exception as e:
+        log.warning(f"⚠️ status.d420.de خطا: {e} — fallback")
+
+    # fallback به لیست ثابت
+    log.info(f"🔌 Nitter fallback: {len(NITTER_FALLBACK)} instance")
+    _nitter_cache = NITTER_FALLBACK.copy()
+    return _nitter_cache
+
 NITTER_HDR = {"User-Agent": TG_UA, "Accept": "application/rss+xml,application/xml;q=0.9,*/*;q=0.8"}
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -427,10 +502,12 @@ def _wrap_text(text:str, chars:int) -> list[str]:
     return lines
 
 def make_news_card(headline:str, fa_text:str, src:str, dt_str:str,
-                   link:str="", urgent:bool=False) -> io.BytesIO | None:
+                   link:str="", urgent:bool=False,
+                   sentiment_icons:list|None=None) -> io.BytesIO | None:
+    """PIL کارت خبری — هدر رنگی + متن + نوار احساسات در پایین"""
     if not PIL_OK: return None
     try:
-        W, H = 960, 300
+        W, H = 960, 310
         acc = _get_accent(src, urgent)
         img = Image.new("RGB", (W,H), BG_DARK)
         drw = ImageDraw.Draw(img)
@@ -445,31 +522,45 @@ def make_news_card(headline:str, fa_text:str, src:str, dt_str:str,
         try:
             F_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",14)
             F_H  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",21)
-            F_b  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",17)
-            F_xs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",12)
+            F_em = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",20)
         except:
-            F_sm=F_H=F_b=F_xs=ImageFont.load_default()
+            F_sm=F_H=F_em=ImageFont.load_default()
 
         # منبع در هدر
         drw.text((18,18), src[:50], font=F_sm, fill=acc)
         drw.text((W-170,18), dt_str[:25], font=F_sm, fill=FG_GREY)
 
-        # متن اصلی
-        y=76
+        # متن اصلی (راست‌چین برای فارسی)
+        y = 72
         body = fa_text if (fa_text and fa_text!=headline and len(fa_text)>5) else headline
-        for line in _wrap_text(body, 50)[:4]:
+        for line in _wrap_text(body, 50)[:3]:
             drw.text((W-18, y), line, font=F_H, fill=FG_WHITE, anchor="ra")
-            y+=34
+            y += 34
 
-        # پاورقی
-        drw.rectangle([(0,H-42),(W,H)], fill=BG_BAR)
-        if link:
-            short = link[:70]+"…" if len(link)>70 else link
-            drw.text((18,H-26), f"↗ {short}", font=F_xs, fill=FG_GREY)
+        # ── نوار احساسات (پایین کارت)
+        drw.rectangle([(0, H-56),(W, H)], fill=BG_BAR)
+        drw.rectangle([(0, H-58),(W, H-56)], fill=acc)   # خط جداکننده
+
+        ICON_BG: dict[str,tuple] = {
+            "💀":(140,20,20),  "🔴":(180,30,30),  "💥":(190,80,10),
+            "✈️":(20,90,160),  "🚀":(100,20,160), "☢️":(0,130,50),
+            "🚢":(10,80,140),  "🕵️":(60,55,70),   "🛡️":(20,110,80),
+            "🔥":(180,60,0),   "💰":(130,110,0),  "⚠️":(160,110,0),
+            "🤝":(20,120,100), "📜":(60,80,100),  "📰":(45,58,72),
+        }
+        icons = sentiment_icons or ["📰"]
+        x_pos = 16
+        for ico in icons[:4]:
+            bg = ICON_BG.get(ico, (50,65,75))
+            drw.rounded_rectangle(
+                [(x_pos-2, H-52),(x_pos+38, H-6)],
+                radius=7, fill=bg)
+            drw.text((x_pos+2, H-50), ico, font=F_em, fill=(255,255,255))
+            x_pos += 50
 
         # نشانگر فوریت (نوار چپ)
         if urgent:
-            drw.rectangle([(0,61),(5,H-42)], fill=acc)
+            drw.rectangle([(0,61),(5,H-58)], fill=acc)
 
         buf = io.BytesIO()
         img.save(buf,"JPEG",quality=88)
@@ -478,6 +569,8 @@ def make_news_card(headline:str, fa_text:str, src:str, dt_str:str,
     except Exception as e:
         log.debug(f"PIL card: {e}")
         return None
+
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # 🎯  فیلتر جنگ
@@ -618,16 +711,28 @@ async def fetch_telegram_channel(client:httpx.AsyncClient, label:str, handle:str
         return []
 
 async def fetch_twitter(client:httpx.AsyncClient, label:str, handle:str) -> list:
-    instances = NITTER_INSTANCES.copy(); random.shuffle(instances[1:])
-    for inst in instances[:4]:
+    """
+    دریافت RSS تویتر از Nitter
+    - instanceها را هر اجرا از status.d420.de می‌گیرد (کش ۱ ساعته)
+    - ترتیب: بهترین instance اول، بقیه تصادفی
+    - امتحان حداکثر ۶ instance قبل از تسلیم
+    """
+    instances = await get_nitter_instances(client)
+    # اول بهترین، بقیه shuffle
+    ordered = [instances[0]] + random.sample(instances[1:], min(5, len(instances)-1)) if len(instances)>1 else instances
+    for inst in ordered:
+        url = f"{inst}/{handle}/rss"
         try:
-            r = await client.get(f"{inst}/{handle}/rss", timeout=httpx.Timeout(9.0), headers=NITTER_HDR)
-            if r.status_code==200 and len(r.text)>300:
+            r = await client.get(url, timeout=httpx.Timeout(9.0), headers=NITTER_HDR)
+            if r.status_code == 200 and len(r.text) > 300:
                 entries = feedparser.parse(r.text).entries
                 if entries and entries[0].get("title"):
                     return [(e, f"𝕏 {label}", "tw", False) for e in entries]
-        except: continue
+            # ۴۲۹ یا ۴۰۳: این instance کار نمی‌کنه، بعدی
+        except Exception:
+            continue
     return []
+
 
 async def fetch_all(client:httpx.AsyncClient) -> list:
     rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
@@ -806,8 +911,103 @@ async def tg_send_photo(client:httpx.AsyncClient, buf:io.BytesIO, caption:str) -
     except Exception as e: log.warning(f"TG photo: {e}"); return False
 
 # ──────────────────────────────────────────────────────────────────────────
-# حلقه اصلی
+# 🎭  تحلیل احساسات و دسته‌بندی خبر با آیکون‌های گرافیکی
+#
+#  منطق اولویت‌بندی (از بالاترین به پایین‌ترین شدت):
+#   ۱. تلفات انسانی  → 💀
+#   ۲. حمله فعال     → 🔴
+#   ۳. انفجار        → 💥
+#   ۴. حمله هوایی    → ✈️
+#   ۵. موشک/پهپاد    → 🚀
+#   ۶. هسته‌ای       → ☢️
+#   ۷. دریایی        → 🚢
+#   ۸. اطلاعاتی      → 🕵️
+#   ۹. دفاع/رهگیری   → 🛡️
+#  ۱۰. تشدید         → 🔥
+#  ۱۱. تحریم         → 💰
+#  ۱۲. تهدید         → ⚠️
+#  ۱۳. دیپلماسی      → 🤝
+#  ۱۴. بیانیه        → 📜
 # ──────────────────────────────────────────────────────────────────────────
+SENTIMENT_RULES: list[tuple[str, list[str], list[str]]] = [
+    # (icon, کلیدواژه‌های EN, کلیدواژه‌های FA)
+    ("💀", ["killed","dead","casualties","deaths","fatalities","wounded","injure",
+            "martyred","massacre","civilian death","body count"],
+           ["کشته","شهید","شهدا","تلفات","کشتار","قربانی","مجروح","فوت"]),
+
+    ("🔴", ["attack","struck","assault","offensive","launched attack","opened fire",
+            "under attack","targeted","hit by","bombed"],
+           ["حمله","ضربه","زده شد","حمله کرد","مورد هدف"]),
+
+    ("💥", ["explosion","blast","detonation","explode","blew up","bomb went off",
+            "shockwave","blast wave"],
+           ["انفجار","منفجر","انفجار بزرگ","صدای انفجار","ترکید"]),
+
+    ("✈️", ["airstrike","air strike","air raid","aerial bombardment","jet","fighter jet",
+            "bombing raid","warplane","f-35","f-15","f-16","b-52","b-2","b-1"],
+           ["حمله هوایی","بمباران","جنگنده","هواپیمای جنگی","هوایی"]),
+
+    ("🚀", ["missile","rocket","ballistic","cruise missile","drone strike",
+            "uav attack","unmanned","hypersonic","icbm","projectile"],
+           ["موشک","پهپاد","موشک بالستیک","موشک کروز","پرتاب موشک","راکت"]),
+
+    ("☢️", ["nuclear","uranium","enrichment","natanz","fordow","arak","centrifuge",
+            "radioactive","dirty bomb","atomic","plutonium","iaea","npt"],
+           ["هسته‌ای","اتمی","اورانیوم","غنی‌سازی","نطنز","فردو","اراک","سانتریفیوژ","هسته"]),
+
+    ("🚢", ["navy","naval","warship","destroyer","aircraft carrier","frigate",
+            "submarine","strait of hormuz","red sea","persian gulf patrol","coast guard"],
+           ["نیروی دریایی","ناوچه","ناو","ناو هواپیمابر","تنگه هرمز","دریایی","خلیج فارس"]),
+
+    ("🕵️", ["intelligence","mossad","cia","spy","covert","assassination","sabotage",
+            "cyber attack","hacking","infiltrat","agent","operativ"],
+           ["اطلاعاتی","جاسوسی","موساد","عملیات مخفی","خرابکاری","ترور","سایبری","نفوذ"]),
+
+    ("🛡️", ["intercept","shot down","iron dome","arrow missile","david sling",
+            "air defense","patriot","s-300","s-400","anti-missile","shoot down"],
+           ["رهگیری","پدافند","گنبد آهنین","سرنگون کرد","سامانه موشکی","ضد موشک"]),
+
+    ("🔥", ["escalat","escalation","tension","brink of war","imminent","standoff",
+            "heighten","provocation","retaliat","tit for tat","cross the line"],
+           ["تشدید","تنش","آستانه جنگ","تلافی","لبه پرتگاه","افزایش تنش"]),
+
+    ("💰", ["sanction","embargo","freeze assets","economic pressure","export ban",
+            "oil ban","swift","financial restriction","maximum pressure"],
+           ["تحریم","تحریم‌ها","محاصره اقتصادی","فشار اقتصادی","مسدود کردن دارایی"]),
+
+    ("⚠️", ["threat","warn","warning","ultimatum","red line","consequences",
+            "take action","will respond","prepare for","on alert"],
+           ["تهدید","هشدار","خط قرمز","اولتیماتوم","عواقب","آماده‌باش","واکنش نشان"]),
+
+    ("🤝", ["negotiation","talks","deal","diplomacy","ceasefire","agreement",
+            "summit","meeting","envoy","dialogue","diplomatic"],
+           ["مذاکره","توافق","دیپلماسی","آتش‌بس","گفتگو","نشست","دیپلماتیک","میانجی"]),
+
+    ("📜", ["statement","declared","announced","said","confirmed","denied",
+            "press conference","official","spokesperson","briefing"],
+           ["بیانیه","اعلام","اعلام کرد","تأیید کرد","نفی کرد","نشست خبری","سخنگو"]),
+]
+
+def analyze_sentiment(text: str) -> list[str]:
+    """
+    تحلیل متن خبر و برگرداندن لیست آیکون‌های احساسی
+    - حداکثر ۳ آیکون برجسته‌ترین موضوعات
+    - اولویت‌بندی بر اساس ترتیب قوانین (شدیدترین اول)
+    """
+    txt = text.lower()
+    found: list[str] = []
+    for icon, en_kws, fa_kws in SENTIMENT_RULES:
+        if any(kw in txt for kw in en_kws) or any(kw in txt for kw in fa_kws):
+            found.append(icon)
+        if len(found) >= 3:
+            break
+    return found if found else ["📰"]  # پیش‌فرض: خبر معمولی
+
+def sentiment_bar(icons: list[str]) -> str:
+    """خط نمایش آیکون‌های احساسی"""
+    return "  ".join(icons)
+
+
 async def main():
     if not BOT_TOKEN or not CHANNEL_ID:
         log.error("❌ BOT_TOKEN یا CHANNEL_ID نیست!"); return
@@ -885,28 +1085,38 @@ async def main():
         # ── ارسال
         sent=0
         for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
-            fa, _   = translations[i]
+            fa, _    = translations[i]
             en_title = arts_in[i][0]
+            en_body  = arts_in[i][1]
             link     = entry.get("link","")
             dt_str   = format_dt(entry)
             display  = fa if (fa and fa!=en_title and len(fa)>5) else en_title
             urgent   = any(w in (fa+en_title).lower() for w in
                           ["attack","strike","airstrike","killed","حمله","کشته","انفجار","موشک","bomb"])
 
+            # ── تحلیل احساسات
+            sentiment_icons = analyze_sentiment(f"{fa} {en_title} {en_body}")
+            s_bar = sentiment_bar(sentiment_icons)
+
             src_icon = "🏛️" if is_emb else ("𝕏" if stype=="tw" else ("📢" if stype=="tg" else "📡"))
             card_sent = False
 
             if PIL_OK:
-                buf = make_news_card(en_title, fa if fa!=en_title else "", src_name, dt_str, link, urgent)
+                buf = make_news_card(en_title, fa if fa!=en_title else "",
+                                     src_name, dt_str, link, urgent, sentiment_icons)
                 if buf:
-                    cap = f"<b>{esc(display)}</b>\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
+                    cap = f"{s_bar}\n\n<b>{esc(display)}</b>\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
                     if await tg_send_photo(client, buf, cap):
                         card_sent=True
 
             if not card_sent:
-                parts=[f"<b>{esc(display)}</b>","",f"─── {src_icon} <b>{esc(src_name)}</b>"]
+                parts = [
+                    f"{s_bar}",
+                    f"<b>{esc(display)}</b>",
+                    "",
+                    f"─── {src_icon} <b>{esc(src_name)}</b>",
+                ]
                 if dt_str: parts.append(dt_str)
-                if urgent: parts.insert(0,"🔴")
                 if await tg_send_text(client, "\n".join(parts)):
                     card_sent=True
 
