@@ -234,36 +234,67 @@ TG_HEADERS = {"User-Agent": TG_UA, "Accept": "text/html,application/xhtml+xml;q=
 # 𝕏  Twitter / Nitter
 # ──────────────────────────────────────────────────────────────────────────
 TWITTER_HANDLES = [
-    ("🇮🇷 IRNA EN",          "IRNA_English"),
-    ("🇮🇷 IranIntl EN",      "IranIntl_En"),
-    ("🇮🇷 Press TV",         "PressTV"),
-    ("🇮🇷 Farnaz Fassihi",   "farnazfassihi"),
-    ("🇮🇷 Negar Mortazavi",  "NegarMortazavi"),
-    ("🇺🇸 CENTCOM",          "CENTCOM"),
-    ("🇺🇸 DoD",              "DeptofDefense"),
-    ("🇺🇸 Marco Rubio",      "marcorubio"),
-    ("🇺🇸 Natasha Bertrand", "NatashaBertrand"),
-    ("🇺🇸 Barak Ravid",      "BarakRavid"),
-    ("🇺🇸 Idrees Ali",       "idreesali114"),
-    ("🇺🇸 Lara Seligman",    "laraseligman"),
-    ("🇺🇸 Jack Detsch",      "JackDetsch"),
-    ("🇮🇱 IDF",              "IDF"),
-    ("🇮🇱 Israeli PM",       "IsraeliPM"),
-    ("🇮🇱 Yossi Melman",     "yossi_melman"),
-    ("🇮🇱 Seth Frantzman",   "sfrantzman"),
-    ("🔍 OSINTdefender",     "OSINTdefender"),
-    ("🔍 IntelCrab",         "IntelCrab"),
-    ("🔍 WarMonitor",        "WarMonitor3"),
-    ("🔍 GeoConfirmed",      "GeoConfirmed"),
-    ("🔍 AuroraIntel",       "AuroraIntel"),
-    ("⚠️ DEFCONLevel",       "DEFCONLevel"),
+    # 🇮🇷 ایران — خبرنگار / تحلیلگر
+    ("🇮🇷 IRNA EN",               "IRNA_English"),
+    ("🇮🇷 IranIntl EN",           "IranIntl_En"),
+    ("🇮🇷 Press TV",              "PressTV"),
+    ("🇮🇷 Farnaz Fassihi",        "farnazfassihi"),       # نیویورک تایمز
+    ("🇮🇷 Negar Mortazavi",       "NegarMortazavi"),
+    ("🇮🇷 Ali Vaez",              "AliVaez"),             # مدیر پروژه ایران / ICG
+    ("🇮🇷 Golnaz Esfandiari",     "GEsfandiari"),         # خبرنگار ارشد RFE/RL
+    ("🇮🇷 Sina Toossi",           "SinaToossi"),          # تحلیلگر مرکز سیاست بین‌المللی
+    ("🇮🇷 Holly Dagres",          "hdagres"),             # پژوهشگر شورای آتلانتیک
+    ("🇮🇷 Saeed Ghasseminejad",   "SGhasseminejad"),      # مشاور ارشد FDD
+    ("🇮🇷 Kasra Aarabi",          "KasraAarabi"),         # مدیر تحقیقات سپاه / UANI
+    # 🇺🇸 آمریکا — دولتی / خبرنگار / تحلیلگر
+    ("🇺🇸 CENTCOM",               "CENTCOM"),
+    ("🇺🇸 DoD",                   "DeptofDefense"),
+    ("🇺🇸 Marco Rubio",           "marcorubio"),
+    ("🇺🇸 Natasha Bertrand",      "NatashaBertrand"),     # CNN
+    ("🇺🇸 Barak Ravid",           "BarakRavid"),          # Axios
+    ("🇺🇸 Idrees Ali",            "idreesali114"),        # Reuters
+    ("🇺🇸 Lara Seligman",         "laraseligman"),        # Politico
+    ("🇺🇸 Jack Detsch",           "JackDetsch"),          # Foreign Policy
+    ("🇺🇸 Trita Parsi",           "tparsi"),              # بنیان‌گذار موسسه کوئینسی
+    ("🇺🇸 Barbara Slavin",        "barbaraslavin1"),      # مرکز استیمسون
+    ("🇺🇸 Ian Bremmer",           "ianbremmer"),          # رئیس گروه اوراسیا
+    ("🇺🇸 Jim Sciutto",           "jimsciutto"),          # تحلیلگر ارشد امنیت ملی CNN
+    ("🇺🇸 Michael Knights",       "Mikeknightsiraq"),     # موسسه واشنگتن
+    # 🇪🇺 اروپا — اندیشکده / خبرنگار
+    ("🇪🇺 Ellie Geranmayeh",      "EllieGeranmayeh"),     # ECFR — ارشدترین کارشناس ایران اروپا
+    ("🇪🇺 Carl Bildt",            "carlbildt"),           # رئیس مشترک ECFR / نخست‌وزیر سابق سوئد
+    ("🇪🇺 Julien Barnes-Dacey",   "jbarnesdacey"),        # مدیر برنامه خاورمیانه ECFR
+    ("🇪🇺 Neil Quilliam",         "NeilQuilliam1"),       # کارشناس خاورمیانه / Chatham House
+    # 🇮🇱 اسراییل — رسمی / خبرنگار
+    ("🇮🇱 IDF",                   "IDF"),
+    ("🇮🇱 Israeli PM",            "IsraeliPM"),
+    ("🇮🇱 Yossi Melman",          "yossi_melman"),        # Mossad / امنیت
+    ("🇮🇱 Seth Frantzman",        "sfrantzman"),          # Jerusalem Post
+    ("🇮🇱 Amos Harel",            "AmosHarel"),           # خبرنگار ارشد نظامی Haaretz
+    ("🇮🇱 Yaakov Katz",           "yaakovkatz"),          # سردبیر سابق JP / تحلیلگر نظامی
+    ("🇮🇱 Anshel Pfeffer",        "AnshelPfeffer"),       # Haaretz / The Economist
+    ("🇮🇱 Anna Ahronheim",        "AAhronheim"),          # خبرنگار نظامی
+    ("🇮🇱 Emanuel Fabian",        "manniefabian"),        # Times of Israel
+    ("🇮🇱 Tal Schneider",         "talschneider"),        # Times of Israel دیپلماسی
+    # 🔍 OSINT / پایش
+    ("🔍 OSINTdefender",          "OSINTdefender"),
+    ("🔍 IntelCrab",              "IntelCrab"),
+    ("🔍 WarMonitor",             "WarMonitor3"),
+    ("🔍 GeoConfirmed",           "GeoConfirmed"),
+    ("🔍 AuroraIntel",            "AuroraIntel"),
+    ("🔍 Faytuks News",           "Faytuks"),             # پوشش سریع اخبار نظامی
+    ("🔍 Clash Report",           "clashreport"),         # پوشش اخبار درگیری‌ها
+    ("🔍 Aric Toler",             "AricToler"),           # NYT / عضو سابق Bellingcat
+    ("⚠️ DEFCONLevel",            "DEFCONLevel"),
 ]
 
 NITTER_INSTANCES = [
-    "https://nitter.poast.org",
+    "https://nitter.poast.org",           # پایدارترین — اول امتحان می‌شه
+    "https://xcancel.com",                # پایدار با Cloudflare
+    "https://twiiit.com",                 # پروکسی هوشمند → سرور فعال
+    "https://nitter.cz",                  # ریدایرکت به سرور خوب
     "https://nitter.privacyredirect.com",
     "https://nitter.tiekoetter.com",
-    "https://xcancel.com",
     "https://nuku.trabun.org",
     "https://nitter.catsarch.com",
 ]
@@ -868,15 +899,13 @@ async def main():
             if PIL_OK:
                 buf = make_news_card(en_title, fa if fa!=en_title else "", src_name, dt_str, link, urgent)
                 if buf:
-                    cap = f"<b>{esc(display)}</b>\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}\n"
-                    if link: cap += f'🔗 <a href="{link}">منبع</a>'
+                    cap = f"<b>{esc(display)}</b>\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
                     if await tg_send_photo(client, buf, cap):
                         card_sent=True
 
             if not card_sent:
                 parts=[f"<b>{esc(display)}</b>","",f"─── {src_icon} <b>{esc(src_name)}</b>"]
                 if dt_str: parts.append(dt_str)
-                if link:   parts.append(f'🔗 <a href="{link}">منبع</a>')
                 if urgent: parts.insert(0,"🔴")
                 if await tg_send_text(client, "\n".join(parts)):
                     card_sent=True
