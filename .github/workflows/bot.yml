@@ -1,22 +1,28 @@
-name: 🛡️ Iran-USA-Israel War Bot v13
+name: 🛡️ Iran-USA-Israel War Bot v14
 
 on:
   schedule:
     - cron: '*/5 * * * *'    # هر ۵ دقیقه
   workflow_dispatch:
 
+# جلوگیری از اجرای همزمان دو نسخه از ربات و خرابی دیتابیس‌های JSON
+concurrency:
+  group: bot-runner
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6       # زمان را کمی بیشتر کردیم تا پردازش‌های Gemini قطع نشود
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -24,16 +30,14 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      # دانلود یک فونت استاندارد فارسی برای کارت‌های تصویری
+      - name: Download Persian Font
+        run: wget -q -O Vazirmatn.ttf https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Bold.ttf
+
       - name: Install dependencies
         run: |
-          pip install --quiet \
-            feedparser \
-            httpx \
-            beautifulsoup4 \
-            pytz \
-            lxml \
-            hazm \
-            Pillow
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run War Bot
         env:
@@ -42,16 +46,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
-      - name: Commit state files
+      - name: Commit and Push state files
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add \
-            seen.json \
-            title_hashes.json \
-            gemini_state.json \
-            flight_alerts.json \
-            2>/dev/null || true
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # اضافه کردن تمام فایل‌های JSON که به عنوان دیتابیس/استیت استفاده می‌شوند
+          git add *.json 2>/dev/null || true
+          
+          # اگر تغییری بود، کامیت کن. استفاده از pull --rebase برای جلوگیری از خطای Conflict
           git diff --staged --quiet || \
-            (git commit -m "♻️ state update [skip ci]" && git push)
+            (git commit -m "♻️ state update [skip ci]" && \
+             git pull --rebase origin main && \
+             git push)
