@@ -33,7 +33,7 @@ jobs:
             pytz \
             lxml \
             hazm \
-            Pillow
+            "Pillow>=9.0.0"
 
       - name: Run War Bot
         env:
@@ -57,4 +57,3 @@ jobs:
             2>/dev/null || true
           git diff --staged --quiet || \
             (git commit -m "♻️ state update [skip ci]" && git push)
-
