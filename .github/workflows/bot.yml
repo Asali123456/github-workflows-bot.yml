@@ -5,24 +5,18 @@ on:
     - cron: '*/5 * * * *'    # هر ۵ دقیقه
   workflow_dispatch:
 
-# جلوگیری از اجرای همزمان دو نسخه از ربات و خرابی دیتابیس‌های JSON
-concurrency:
-  group: bot-runner
-  cancel-in-progress: false
-
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 6       # زمان را کمی بیشتر کردیم تا پردازش‌های Gemini قطع نشود
+    timeout-minutes: 4
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 1
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -30,14 +24,16 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      # دانلود یک فونت استاندارد فارسی برای کارت‌های تصویری
-      - name: Download Persian Font
-        run: wget -q -O Vazirmatn.ttf https://github.com/rastikerdar/vazirmatn/raw/master/fonts/ttf/Vazirmatn-Bold.ttf
-
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install --quiet \
+            feedparser \
+            httpx \
+            beautifulsoup4 \
+            pytz \
+            lxml \
+            hazm \
+            Pillow
 
       - name: Run War Bot
         env:
@@ -46,17 +42,18 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python bot.py
 
-      - name: Commit and Push state files
+      - name: Commit state files
         if: always()
         run: |
           git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
-          # اضافه کردن تمام فایل‌های JSON که به عنوان دیتابیس/استیت استفاده می‌شوند
-          git add *.json 2>/dev/null || true
-          
-          # اگر تغییری بود، کامیت کن. استفاده از pull --rebase برای جلوگیری از خطای Conflict
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add \
+            seen.json \
+            stories.json \
+            run_state.json \
+            nitter_cache.json \
+            gemini_state.json \
+            flight_alerts.json \
+            2>/dev/null || true
           git diff --staged --quiet || \
-            (git commit -m "♻️ state update [skip ci]" && \
-             git pull --rebase origin main && \
-             git push)
+            (git commit -m "♻️ state update [skip ci]" && git push)
