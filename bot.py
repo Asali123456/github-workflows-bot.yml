@@ -1,17 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════╗
-║  🛡️  Iran-USA-Israel WAR BOT  v13                                        ║
-║  ──────────────────────────────────────────────────────────────────────  ║
-║  ✅ 199 RSS/GNews   ✅ 23 Twitter/Nitter                                  ║
-║  ✅ 40 کانال تلگرام (خاورمیانه + خلیج‌فارس + OSINT)                     ║
-║  ✅ ردیابی پروازهای نظامی ADS-B (api.adsb.one رایگان)                   ║
-║  ✅ گرافیک PIL — کارت خبری رنگ‌بندی‌شده بر اساس فوریت                   ║
-║  ✅ Dedup معنایی Jaccard — بدون تکرار حتی با عنوان متفاوت               ║
-║  ✅ Gemini 7 مدل — ۲۷۵۰ RPD — ترجمه عامیانه فارسی                       ║
-║  ✅ هر ۵ دقیقه — فقط اخبار جنگ ایران/آمریکا/اسراییل                    ║
-╚══════════════════════════════════════════════════════════════════════════╝
-"""
-
 import os, json, hashlib, asyncio, logging, re, random, io
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -339,7 +325,7 @@ _NITTER_SEMA: asyncio.Semaphore | None = None   # در main() مقداردهی �
 # Per-instance آخرین زمان request → جلوگیری از 2 req/s به یه instance
 _NITTER_INST_LAST: dict[str, float] = {}
 
-async def _nitter_get(client: httpx.AsyncClient, url: str) -> httpx.Response | None:
+async def _nitter_get(client: httpx.AsyncClient, url: str):
     """
     GET با rate-limit رعایت‌شده:
     - سمافور کلی (max 4 همزمان) — مقداردهی در main()
@@ -351,7 +337,7 @@ async def _nitter_get(client: httpx.AsyncClient, url: str) -> httpx.Response | N
     sema = _NITTER_SEMA if _NITTER_SEMA is not None else asyncio.Semaphore(4)
     async with sema:
         # فاصله per-instance
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         now  = loop.time()
         last = _NITTER_INST_LAST.get(inst, 0)
         gap  = now - last
@@ -366,6 +352,7 @@ async def _nitter_get(client: httpx.AsyncClient, url: str) -> httpx.Response | N
             return None
 
 
+def _load_nitter_disk() -> tuple[list[str], float]:
     try:
         if Path(NITTER_CACHE_FILE).exists():
             d = json.load(open(NITTER_CACHE_FILE))
