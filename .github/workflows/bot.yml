@@ -57,3 +57,4 @@ jobs:
             2>/dev/null || true
           git diff --staged --quiet || \
             (git commit -m "♻️ state update [skip ci]" && git push)
+
