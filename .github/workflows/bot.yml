@@ -1,8 +1,8 @@
-name: 🛡️ Iran-USA-Israel War Bot v15
+name: 🛡️ Iran-USA-Israel War Bot v17
 
 on:
   schedule:
-    - cron: '*/2 * * * *'    # هر ۲ دقیقه → اولین نفر
+    - cron: '*/2 * * * *'    # هر ۲ دقیقه — بلادرنگ
   workflow_dispatch:
 
 jobs:
@@ -17,19 +17,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 1      # سریع‌تر — فقط آخرین commit
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'        # کش → نصب مجدد نیاز نیست
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
           pip install --quiet \
             feedparser \
-            "httpx[http2]" \
+            httpx \
             beautifulsoup4 \
             pytz \
             lxml \
