@@ -2,7 +2,7 @@ name: 🛡️ Iran-USA-Israel War Bot v17
 
 on:
   schedule:
-    - cron: '*/2 * * * *'    # هر ۲ دقیقه — بلادرنگ
+    - cron: '*/2 * * * *'    # هر ۲ دقیقه
   workflow_dispatch:
 
 jobs:
@@ -29,6 +29,7 @@ jobs:
           pip install --quiet \
             feedparser \
             httpx \
+            "httpx[http2]" \
             beautifulsoup4 \
             pytz \
             lxml \
