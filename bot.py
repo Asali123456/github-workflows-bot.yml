@@ -1326,13 +1326,50 @@ def trim(t:str, n:int) -> str:
     return t if len(t)<=n else t[:n].rsplit(" ",1)[0]+"…"
 
 def load_seen() -> set:
-    if Path(SEEN_FILE).exists():
-        try: return set(json.load(open(SEEN_FILE)))
-        except: pass
+    """
+    بارگذاری seen.json با TTL 48 ساعته
+    فرمت جدید: {"id": timestamp} — آیتم‌های قدیمی‌تر از 48h حذف می‌شن
+    فرمت قدیم: [id, ...] — به صورت خودکار migrate می‌شه
+    """
+    cutoff_ts = datetime.now(timezone.utc).timestamp() - 48 * 3600
+    try:
+        if Path(SEEN_FILE).exists():
+            raw = json.load(open(SEEN_FILE))
+            if isinstance(raw, dict):
+                # فرمت جدید: {id: ts}
+                return {k for k, v in raw.items() if v > cutoff_ts}
+            elif isinstance(raw, list):
+                # فرمت قدیم: list → migrate (بدون timestamp، همه نگه می‌داریم)
+                return set(raw[-5000:])  # فقط ۵۰۰۰ تا آخر
+    except: pass
     return set()
 
 def save_seen(seen: set):
-    json.dump(list(seen)[-30000:], open(SEEN_FILE, "w"))
+    """ذخیره seen با timestamp فعلی"""
+    now_ts = datetime.now(timezone.utc).timestamp()
+    try:
+        # خواندن timestamps موجود
+        if Path(SEEN_FILE).exists():
+            raw = json.load(open(SEEN_FILE))
+            if isinstance(raw, dict):
+                existing = raw
+            else:
+                existing = {}
+        else:
+            existing = {}
+    except:
+        existing = {}
+    # merge: IDs جدید + قدیمی که هنوز معتبرند
+    cutoff_ts = now_ts - 48 * 3600
+    merged = {k: v for k, v in existing.items() if v > cutoff_ts}
+    for eid in seen:
+        if eid not in merged:
+            merged[eid] = now_ts
+    # حداکثر ۱۵۰۰۰ آیتم
+    if len(merged) > 15000:
+        sorted_items = sorted(merged.items(), key=lambda x: x[1], reverse=True)
+        merged = dict(sorted_items[:15000])
+    json.dump(merged, open(SEEN_FILE, "w"))
 
 # ── زمان آخرین اجرا برای cutoff بلادرنگ ──
 RUN_STATE_FILE      = "run_state.json"
@@ -1516,6 +1553,7 @@ async def main():
     seen    = load_seen()
     stories = load_stories()
     cutoff, tw_idx = get_realtime_cutoff()
+    next_tw_idx = (tw_idx + TW_HANDLES_PER_RUN) % len(TWITTER_HANDLES)
 
     log.info("=" * 65)
     log.info(f"🚀 WarBot v14  |  {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
