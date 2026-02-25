@@ -1,8 +1,8 @@
-name: 🛡️ Iran-USA-Israel War Bot v14
+name: 🛡️ Iran-USA-Israel War Bot v15
 
 on:
   schedule:
-    - cron: '*/5 * * * *'    # هر ۵ دقیقه
+    - cron: '*/2 * * * *'    # هر ۲ دقیقه → اولین نفر
   workflow_dispatch:
 
 jobs:
@@ -17,18 +17,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1      # سریع‌تر — فقط آخرین commit
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          cache: 'pip'        # کش → نصب مجدد نیاز نیست
 
       - name: Install dependencies
         run: |
           pip install --quiet \
             feedparser \
-            httpx \
+            "httpx[http2]" \
             beautifulsoup4 \
             pytz \
             lxml \
@@ -56,4 +57,4 @@ jobs:
             flight_alerts.json \
             2>/dev/null || true
           git diff --staged --quiet || \
-            (git commit -m "♻️ state update [skip ci]" && git push)
+            (git commit -m "♻️ state [skip ci]" && git push)
