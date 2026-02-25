@@ -636,7 +636,11 @@ def is_story_dup(title: str, stories: list) -> bool:
     bag1 = _bag(title)
     if not bag1: return False
     a1, a2, act1 = _entity_triple(title)
-    for prev_t, prev_bag, prev_triple in stories:
+    for item in stories:
+        if not (isinstance(item, (list, tuple)) and len(item) == 3):
+            continue
+        _, prev_bag_raw, prev_triple = item
+        prev_bag = set(prev_bag_raw) if isinstance(prev_bag_raw, list) else prev_bag_raw
         pa, pb, pact = prev_triple
         if act1 and pact and act1 in _VIOLENCE_CODES and pact in _VIOLENCE_CODES:
             if a1 == pa and a2 == pb: return True
@@ -647,8 +651,8 @@ def is_story_dup(title: str, stories: list) -> bool:
             return True
     return False
 
-def register_story(title, stories):
-    stories.append((title, _bag(title), _entity_triple(title)))
+def register_story(title: str, stories: list) -> list:
+    stories.append([title, list(_bag(title)), list(_entity_triple(title))])
     return stories[-300:]
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -709,7 +713,17 @@ def save_run_state():
 
 def load_stories() -> list:
     try:
-        if Path(STORIES_FILE).exists(): return json.load(open(STORIES_FILE))
+        if Path(STORIES_FILE).exists():
+            raw = json.load(open(STORIES_FILE))
+            # migrate فرمت قدیم (2-tuple) به جدید (3-tuple)
+            result = []
+            for item in raw:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    title = item[0]
+                    result.append([title, list(_bag(title)), list(_entity_triple(title))])
+                elif isinstance(item, (list, tuple)) and len(item) == 3:
+                    result.append(item)
+            return result
     except: pass
     return []
 
