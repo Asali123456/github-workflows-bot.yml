@@ -1,3 +1,16 @@
+"""
+╔══════════════════════════════════════════════════════════════════════════╗
+║  🛡️  Iran-USA-Israel WAR BOT  v17 — بازنویسی اساسی                      ║
+║                                                                          ║
+║  اصلاحات اساسی v17:                                                      ║
+║  ✅ cutoff = last_run - 3min → دیگه url-dup انبوه نداریم                 ║
+║  ✅ همه ۴۷ Twitter handle هر اجرا (semaphore=20)                         ║
+║  ✅ Nitter اول → RSSHub → xcancel (بهینه برای GitHub Actions)            ║
+║  ✅ seen.json فقط sent_ids → سبک و دقیق                                  ║
+║  ✅ TG cutoff = last_run نه ۲ ساعت                                        ║
+╚══════════════════════════════════════════════════════════════════════════╝
+"""
+
 import os, json, hashlib, asyncio, logging, re, io
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -250,10 +263,18 @@ EMBASSY_OVERRIDE = [
     "تخلیه","فوری ترک","هشدار","اضطرار",
 ]
 
+URGENT_KEYWORDS = [
+    "breaking","urgent","just in","alert","explosion","airstrike","missile strike",
+    "killed","dead","war declared","invasion","nuclear attack","bombed",
+    "حمله","انفجار","فوری","خبر فوری","کشته","موشک","اعلام جنگ","بمباران",
+]
+
 def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
     txt = text.lower()
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE): return True
     if any(k in txt for k in HARD_EXCLUDE): return False
+    # کلمات اضطراری → قبول فوری (فیلتر بعداً با dedup انجام می‌شه)
+    if any(k in txt for k in URGENT_KEYWORDS): return True
     hi = any(k in txt for k in IRAN_KEYWORDS)
     ho = any(k in txt for k in OPPONENT_KEYWORDS)
     ha = any(k in txt for k in ACTION_KEYWORDS)
@@ -427,17 +448,23 @@ _MIL_TYPES    = {"B52","B2","B1","F15","F16","F22","F35","F18","E3","E8","RC135"
 _CALLSIGN_PFX = ["DOOM","BONE","BUCK","CIAO","JAKE","TORC","GRIM","HAVOC","GHOST"]
 _ADSB_SEEN    = set()
 
-async def fetch_military_flights(client: httpx.AsyncClient) -> list:
+async def fetch_military_flights(client: httpx.AsyncClient) -> tuple[list, list]:
+    """
+    برمی‌گرداند: (msgs, aircraft_list)
+    aircraft_list: [{"callsign","type","lat","lon","alt","gs","region"}, ...]
+    """
     global _ADSB_SEEN
-    msgs = []
+    msgs     = []
+    aircraft = []
     try:
         try:
             if Path(FLIGHT_ALERT_FILE).exists():
                 _ADSB_SEEN = set(json.load(open(FLIGHT_ALERT_FILE)).get("seen", []))
         except: pass
-        for region, lat, lon, radius in ADSB_REGIONS:
+
+        for region, r_lat, r_lon, radius in ADSB_REGIONS:
             try:
-                r = await client.get(f"{ADSB_API}/point/{lat}/{lon}/{radius}",
+                r = await client.get(f"{ADSB_API}/point/{r_lat}/{r_lon}/{radius}",
                                      timeout=httpx.Timeout(7.0),
                                      headers={"Accept": "application/json"})
                 if r.status_code != 200: continue
@@ -445,8 +472,10 @@ async def fetch_military_flights(client: httpx.AsyncClient) -> list:
                     hex_id   = (ac.get("hex") or ac.get("icao","")).upper()
                     callsign = (ac.get("flight") or ac.get("callsign","")).strip()
                     cat      = (ac.get("category") or "").upper()
-                    t        = (ac.get("t") or ac.get("type","")).upper()
-                    is_mil   = (any(t.startswith(m) for m in _MIL_TYPES)
+                    atype    = (ac.get("t") or ac.get("type","")).upper()
+                    ac_lat   = ac.get("lat") or ac.get("latitude")
+                    ac_lon   = ac.get("lon") or ac.get("longitude")
+                    is_mil   = (any(atype.startswith(m) for m in _MIL_TYPES)
                                 or any(callsign.startswith(p) for p in _CALLSIGN_PFX)
                                 or "A5" in cat)
                     if not is_mil: continue
@@ -455,15 +484,337 @@ async def fetch_military_flights(client: httpx.AsyncClient) -> list:
                     _ADSB_SEEN.add(uid)
                     alt = ac.get("alt_baro") or ac.get("alt", 0)
                     gs  = ac.get("gs") or ac.get("speed", 0)
-                    msgs.append(f"✈️ <b>تحرک نظامی — {region}</b>\n"
-                                f"نوع: <code>{t or '?'}</code>  کال‌ساین: <code>{callsign or hex_id}</code>\n"
-                                f"ارتفاع: {alt:,} ft  سرعت: {gs} kt")
+                    msgs.append(
+                        f"✈️ <b>تحرک نظامی — {region}</b>\n"
+                        f"نوع: <code>{atype or '?'}</code>  کال‌ساین: <code>{callsign or hex_id}</code>\n"
+                        f"ارتفاع: {alt:,} ft  سرعت: {gs} kt"
+                    )
+                    if ac_lat and ac_lon:
+                        aircraft.append({
+                            "callsign": callsign or hex_id,
+                            "type":     atype or "?",
+                            "lat":      float(ac_lat),
+                            "lon":      float(ac_lon),
+                            "alt":      alt,
+                            "gs":       gs,
+                            "region":   region,
+                        })
             except Exception as e:
                 log.debug(f"ADS-B {region}: {e}")
+
         json.dump({"seen": list(_ADSB_SEEN)[-300:]}, open(FLIGHT_ALERT_FILE, "w"))
     except Exception as e:
         log.warning(f"ADS-B: {e}")
-    return msgs
+    return msgs, aircraft
+
+
+def make_flight_map(aircraft: list) -> "io.BytesIO | None":
+    """
+    نقشه دقیق خاورمیانه با موقعیت هواپیماهای نظامی
+    مرزهای تقریبی کشورها + شبکه مختصات + برچسب
+    """
+    if not PIL_OK or not aircraft:
+        return None
+    try:
+        W, H    = 1200, 800
+        PAD_L   = 50    # فضای سمت چپ برای درجات
+        PAD_B   = 30    # فضای پایین
+        PAD_T   = 50    # هدر
+        MAP_W   = W - PAD_L
+        MAP_H   = H - PAD_T - PAD_B
+
+        # محدوده جغرافیایی — خاورمیانه کامل
+        LAT_MIN, LAT_MAX =  16.0, 43.0
+        LON_MIN, LON_MAX =  26.0, 65.0
+
+        def gp(lat, lon):
+            """geo to pixel"""
+            x = PAD_L + int((lon - LON_MIN) / (LON_MAX - LON_MIN) * MAP_W)
+            y = PAD_T + int((LAT_MAX - lat) / (LAT_MAX - LAT_MIN) * MAP_H)
+            return max(0, min(W-1, x)), max(0, min(H-1, y))
+
+        # ── رنگ‌ها ─────────────────────────────────────────────────────
+        C_OCEAN  = (8,  28,  52)
+        C_LAND   = (32, 45,  55)
+        C_LAND2  = (38, 52,  62)   # رنگ متفاوت برای تمایز
+        C_BORDER = (80, 110, 140)
+        C_GRID   = (22, 35,  48)
+        C_GRID_L = (40, 58,  72)
+        C_PLANE  = (255, 70,  50)
+        C_PLANE2 = (255, 180, 50)   # هواپیمای دوم
+        C_LABEL  = (210, 230, 250)
+        C_DIM    = (100, 130, 155)
+        C_ACCENT = (255, 160, 30)
+        C_HEAD   = (12,  18,  28)
+
+        img = Image.new("RGB", (W, H), C_OCEAN)
+        drw = ImageDraw.Draw(img)
+
+        # ── فونت ───────────────────────────────────────────────────────
+        try:
+            F14 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            F12 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+            F11 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+            FB  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15)
+            FBL = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        except:
+            F14 = F12 = F11 = FB = FBL = ImageFont.load_default()
+
+        # ── شبکه مختصات ───────────────────────────────────────────────
+        for lat in range(17, 44, 2):
+            y = gp(lat, LON_MIN)[1]
+            drw.line([(PAD_L, y), (W, y)], fill=C_GRID, width=1)
+            drw.text((2, y - 7), f"{lat}°", fill=C_DIM, font=F11)
+        for lat in range(20, 44, 5):
+            y = gp(lat, LON_MIN)[1]
+            drw.line([(PAD_L, y), (W, y)], fill=C_GRID_L, width=1)
+
+        for lon in range(28, 65, 2):
+            x = gp(LAT_MIN, lon)[0]
+            drw.line([(x, PAD_T), (x, H - PAD_B)], fill=C_GRID, width=1)
+        for lon in range(30, 65, 5):
+            x = gp(LAT_MIN, lon)[0]
+            drw.line([(x, PAD_T), (x, H - PAD_B)], fill=C_GRID_L, width=1)
+            drw.text((x - 8, H - PAD_B + 5), f"{lon}°", fill=C_DIM, font=F11)
+
+        # ── مرزهای کشورها (پلیگون‌های تقریبی polygon) ─────────────────
+        # فرمت: [(lon, lat), ...] — مختصات جغرافیایی
+        COUNTRIES = {
+            "IRAN": {
+                "color": (38, 52, 62),
+                "pts": [
+                    (44.0,37.0),(44.8,39.2),(45.5,39.6),(46.0,39.0),(47.0,39.5),
+                    (48.0,40.0),(49.0,40.2),(50.0,40.0),(51.0,40.8),(52.0,41.0),
+                    (53.0,41.5),(54.0,41.2),(55.0,41.0),(56.0,40.5),(57.0,40.0),
+                    (58.0,39.5),(59.0,38.0),(60.0,37.0),(61.0,36.5),(61.5,35.0),
+                    (61.0,34.0),(60.5,33.0),(60.0,31.5),(59.5,30.5),(58.5,29.5),
+                    (57.5,28.0),(57.0,27.0),(56.5,27.0),(56.0,27.0),(55.0,26.5),
+                    (54.0,26.5),(53.5,27.0),(53.0,26.5),(52.5,27.0),(52.0,27.0),
+                    (51.5,27.5),(51.0,28.0),(50.5,28.5),(50.0,29.0),(49.5,29.5),
+                    (49.0,30.0),(48.5,30.5),(48.0,31.5),(47.5,32.0),(47.0,33.0),
+                    (46.5,33.5),(46.0,34.0),(45.5,35.0),(45.0,36.0),(44.5,36.5),
+                    (44.0,37.0)
+                ]
+            },
+            "IRAQ": {
+                "color": (36, 50, 60),
+                "pts": [
+                    (38.8,33.4),(39.5,33.8),(40.0,34.2),(41.0,34.7),(42.0,35.2),
+                    (43.0,36.0),(44.0,37.0),(44.5,36.5),(45.0,36.0),(45.5,35.0),
+                    (46.0,34.0),(46.5,33.5),(47.0,33.0),(47.5,32.0),(48.0,31.5),
+                    (48.5,30.5),(47.5,30.0),(47.0,29.5),(46.5,29.2),(46.0,29.0),
+                    (44.7,29.2),(43.5,29.5),(42.0,30.5),(41.0,31.5),(40.0,32.0),
+                    (39.0,32.5),(38.8,33.4)
+                ]
+            },
+            "SYRIA": {
+                "color": (34, 48, 58),
+                "pts": [
+                    (35.7,36.8),(36.0,36.5),(36.5,36.8),(37.0,36.5),(38.0,36.8),
+                    (39.0,36.5),(40.0,36.8),(41.0,37.5),(42.0,37.2),(42.5,37.0),
+                    (43.0,36.0),(42.0,35.2),(41.0,34.7),(40.0,34.2),(39.5,33.8),
+                    (38.8,33.4),(38.0,33.5),(37.5,33.3),(37.0,33.5),(36.5,33.5),
+                    (36.0,33.0),(35.8,33.5),(35.5,34.0),(35.7,35.0),(35.7,36.8)
+                ]
+            },
+            "TURKEY": {
+                "color": (36, 50, 60),
+                "pts": [
+                    (26.0,41.0),(27.0,41.5),(28.0,41.8),(29.0,41.5),(30.0,41.5),
+                    (31.0,41.5),(32.0,42.0),(33.0,42.0),(34.0,42.0),(35.0,42.0),
+                    (36.0,41.5),(37.0,41.5),(38.0,40.5),(39.0,40.5),(40.0,40.5),
+                    (41.0,40.0),(42.0,40.5),(43.0,40.5),(44.0,40.0),(44.5,39.8),
+                    (44.0,39.2),(43.0,38.5),(42.0,38.5),(41.0,38.5),(40.0,38.0),
+                    (39.0,37.5),(38.0,37.0),(37.0,37.0),(36.5,36.8),(36.0,36.5),
+                    (35.7,36.8),(35.5,36.5),(35.0,36.5),(34.5,37.0),(34.0,37.0),
+                    (32.0,37.0),(30.0,36.5),(28.0,37.0),(26.5,38.0),(26.0,39.0),
+                    (26.0,41.0)
+                ]
+            },
+            "SAUDI": {
+                "color": (34, 46, 56),
+                "pts": [
+                    (36.5,29.5),(37.0,29.0),(38.0,28.0),(39.0,27.0),(40.0,26.0),
+                    (41.0,25.0),(42.0,24.5),(43.0,24.0),(44.0,23.5),(45.0,23.0),
+                    (46.0,22.5),(47.0,22.0),(48.0,21.5),(49.0,21.0),(50.0,20.5),
+                    (51.0,20.0),(52.0,19.5),(53.0,19.0),(54.0,18.5),(55.0,18.0),
+                    (56.0,18.5),(56.0,20.0),(55.0,22.0),(54.0,24.0),(53.0,25.0),
+                    (52.0,26.0),(51.0,27.0),(50.5,28.5),(50.0,29.0),(49.5,29.5),
+                    (49.0,30.0),(48.5,30.5),(48.0,31.5),(47.5,32.0),(47.0,31.5),
+                    (46.5,31.0),(46.0,29.0),(44.7,29.2),(43.5,29.5),(42.0,30.5),
+                    (41.0,31.5),(40.0,32.0),(39.0,32.5),(38.8,33.4),(38.0,33.5),
+                    (37.5,32.0),(37.0,31.0),(36.8,30.0),(36.5,29.5)
+                ]
+            },
+            "ISRAEL_PAL": {
+                "color": (40, 55, 68),
+                "pts": [
+                    (34.3,31.3),(34.5,31.0),(34.9,30.0),(35.1,29.5),(35.0,29.0),
+                    (34.8,28.5),(34.5,29.5),(34.0,30.5),(33.8,31.0),(34.0,31.5),
+                    (34.3,31.3)
+                ]
+            },
+            "LEBANON": {
+                "color": (36, 52, 64),
+                "pts": [
+                    (35.1,33.0),(35.7,34.0),(36.5,34.0),(36.6,33.5),(36.0,33.3),
+                    (35.5,33.0),(35.1,33.0)
+                ]
+            },
+            "JORDAN": {
+                "color": (34, 48, 58),
+                "pts": [
+                    (34.9,30.0),(35.0,32.0),(35.5,33.0),(36.0,33.3),(36.5,33.5),
+                    (36.6,33.5),(37.0,33.5),(38.0,33.5),(38.8,33.4),(39.0,32.5),
+                    (39.0,31.5),(38.5,30.5),(37.5,30.0),(36.8,30.0),(36.5,29.5),
+                    (36.0,29.5),(35.5,29.5),(35.2,29.6),(35.1,29.5),(34.9,30.0)
+                ]
+            },
+            "YEMEN": {
+                "color": (32, 45, 54),
+                "pts": [
+                    (42.5,16.5),(43.5,16.0),(44.5,15.5),(45.0,15.0),(45.5,14.5),
+                    (46.0,14.0),(47.0,14.5),(48.0,14.0),(49.0,14.5),(50.0,15.0),
+                    (51.0,16.0),(52.0,17.0),(53.0,17.5),(54.0,17.8),(55.0,17.5),
+                    (55.5,16.5),(55.0,16.0),(54.5,15.5),(53.5,16.0),(52.5,17.0),
+                    (51.5,17.0),(50.5,16.5),(49.5,16.0),(48.5,16.0),(47.5,16.5),
+                    (46.5,17.0),(45.5,17.5),(44.5,17.5),(43.5,17.0),(42.5,16.5)
+                ]
+            },
+            "UAE_OMAN": {
+                "color": (34, 48, 58),
+                "pts": [
+                    (51.5,24.0),(52.5,24.5),(53.0,25.0),(54.0,25.5),(55.0,26.0),
+                    (56.0,26.5),(57.0,27.0),(57.5,22.5),(56.5,22.0),(55.5,22.0),
+                    (55.0,23.0),(54.0,24.0),(53.0,23.5),(52.5,23.5),(51.5,24.0)
+                ]
+            },
+        }
+
+        # رسم کشورها
+        for country, info in COUNTRIES.items():
+            pts_geo = info["pts"]
+            if not pts_geo: continue
+            pts_px = [gp(lat, lon) for lon, lat in pts_geo]
+            drw.polygon(pts_px, fill=info["color"], outline=C_BORDER)
+
+        # ── نام کشورها ─────────────────────────────────────────────────
+        LABELS = [
+            (32.5, 53.0, "IRAN",    C_LABEL),
+            (33.3, 44.4, "IRAQ",    C_DIM),
+            (35.0, 38.5, "SYRIA",   C_DIM),
+            (31.5, 35.0, "ISRAEL",  C_DIM),
+            (25.0, 45.0, "SAUDI",   C_DIM),
+            (24.5, 54.5, "UAE",     C_DIM),
+            (15.5, 48.0, "YEMEN",   C_DIM),
+            (32.0, 36.0, "JORDAN",  C_DIM),
+            (33.5, 36.2, "LEBANON", C_DIM),
+            (39.0, 35.0, "TURKEY",  C_DIM),
+            (26.5, 51.5, "GULF",    (60, 100, 140)),
+        ]
+        for r_lat, r_lon, name, color in LABELS:
+            if LAT_MIN <= r_lat <= LAT_MAX and LON_MIN <= r_lon <= LON_MAX:
+                px, py = gp(r_lat, r_lon)
+                drw.text((px, py), name, fill=color, font=F12)
+
+        # ── خلیج فارس (آبی‌تر) ──────────────────────────────────────
+        gulf_pts = [gp(lat, lon) for lon, lat in [
+            (48.0,30.0),(50.0,29.5),(52.0,28.5),(54.0,27.5),(56.0,27.0),
+            (57.0,26.0),(57.0,25.0),(55.0,24.5),(53.0,24.0),(51.0,24.0),
+            (50.0,24.5),(49.0,25.5),(48.0,27.0),(48.0,30.0)
+        ]]
+        drw.polygon(gulf_pts, fill=(12, 40, 72), outline=None)
+
+        # ── دریای سرخ ───────────────────────────────────────────────
+        red_sea_pts = [gp(lat, lon) for lon, lat in [
+            (32.5,30.0),(33.0,28.0),(34.0,26.0),(35.0,24.0),(36.0,22.0),
+            (37.0,20.0),(38.0,18.0),(39.0,17.5),(40.0,17.0),(43.0,16.0),
+            (43.0,17.0),(41.0,18.5),(40.0,20.0),(39.0,22.0),(38.0,24.0),
+            (37.5,26.0),(37.0,28.0),(36.5,30.0),(32.5,30.0)
+        ]]
+        drw.polygon(red_sea_pts, fill=(10, 36, 65), outline=None)
+
+        # ── دریای مدیترانه ───────────────────────────────────────────
+        med_pts = [gp(lat, lon) for lon, lat in [
+            (26.0,36.5),(30.0,36.0),(32.0,34.5),(34.0,33.0),(35.7,36.8),
+            (34.5,37.0),(32.0,37.0),(30.0,36.5),(28.0,37.0),(26.5,38.0),
+            (26.0,36.5)
+        ]]
+        drw.polygon(med_pts, fill=(10, 36, 65), outline=None)
+
+        # ── هواپیماهای نظامی ──────────────────────────────────────────
+        plane_colors = [C_PLANE, C_PLANE2, (80, 200, 120), (180, 80, 255)]
+        placed = []
+
+        for idx, ac in enumerate(aircraft):
+            lat, lon = ac["lat"], ac["lon"]
+            if not (LAT_MIN <= lat <= LAT_MAX and LON_MIN <= lon <= LON_MAX):
+                continue
+            px, py = gp(lat, lon)
+
+            # جلوگیری از تداخل
+            shift = 0
+            for ppx, ppy in placed:
+                if abs(px - ppx) < 20 and abs(py - ppy) < 20:
+                    py -= 25
+                    break
+            placed.append((px, py))
+
+            pc = plane_colors[idx % len(plane_colors)]
+
+            # دایره پس‌زمینه درخشان
+            drw.ellipse([(px-18, py-18), (px+18, py+18)],
+                        fill=(pc[0]//4, pc[1]//4, pc[2]//4), outline=pc, width=2)
+            # مثلث هواپیما
+            tri = [(px, py-12), (px-8, py+8), (px+8, py+8)]
+            drw.polygon(tri, fill=pc, outline=(255,255,255))
+            # نقطه مرکزی
+            drw.ellipse([(px-3, py-3), (px+3, py+3)], fill=(255,255,255))
+
+            # خط راهنما به برچسب
+            lx = px + 22
+            drw.line([(px+12, py), (lx-2, py)], fill=pc, width=1)
+
+            # برچسب پس‌زمینه
+            label   = f"{ac['callsign']} / {ac['type']}"
+            alt_txt = f"alt:{int(ac['alt'])//1000 if ac['alt'] else '?'}k  {ac['gs']}kt"
+            drw.rectangle([(lx-2, py-14), (lx+170, py+18)],
+                          fill=(12, 18, 28), outline=pc)
+            drw.text((lx+2, py-13), label,   fill=pc,    font=FB)
+            drw.text((lx+2, py+2),  alt_txt, fill=C_DIM, font=F11)
+
+        # ── هدر ─────────────────────────────────────────────────────
+        drw.rectangle([(0, 0), (W, PAD_T - 2)], fill=C_HEAD)
+        drw.rectangle([(0, PAD_T - 2), (W, PAD_T)], fill=C_ACCENT)
+        now_str = datetime.now(TEHRAN_TZ).strftime("%H:%M  %Y/%m/%d")
+        drw.text((10, 8),
+                 f"✈  Military Flights — Middle East  |  {now_str}  |  {len(aircraft)} aircraft tracked",
+                 fill=C_ACCENT, font=FB)
+
+        # ── فوتر ────────────────────────────────────────────────────
+        drw.rectangle([(0, H - PAD_B), (W, H)], fill=C_HEAD)
+        drw.text((10, H - PAD_B + 6), "Source: ADS-B Exchange  |  WarBot v17",
+                 fill=C_DIM, font=F11)
+
+        # ── legend ──────────────────────────────────────────────────
+        lx, ly = W - 200, PAD_T + 10
+        drw.rectangle([(lx-5, ly-5), (W-5, ly + len(aircraft)*22 + 10)],
+                      fill=(10, 15, 25), outline=C_BORDER)
+        for i, ac in enumerate(aircraft):
+            pc = plane_colors[i % len(plane_colors)]
+            drw.rectangle([(lx, ly + i*22), (lx+12, ly + i*22 + 12)], fill=pc)
+            drw.text((lx+16, ly + i*22 - 2),
+                     f"{ac['callsign']} – {ac['region']}", fill=C_LABEL, font=F11)
+
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=90)
+        buf.seek(0)
+        return buf
+
+    except Exception as e:
+        log.warning(f"flight_map error: {e}")
+        import traceback; log.debug(traceback.format_exc())
+        return None
 
 # ══════════════════════════════════════════════════════════════════════════
 # RSS + Telegram fetch
@@ -731,7 +1082,7 @@ def save_stories(stories):
     json.dump(stories[-300:], open(STORIES_FILE, "w"))
 
 # ══════════════════════════════════════════════════════════════════════════
-# Gemini ترجمه
+# ترجمه — Gemini اول، MyMemory رایگان fallback
 # ══════════════════════════════════════════════════════════════════════════
 GEMINI_MODELS = [
     "gemini-2.0-flash",
@@ -739,28 +1090,55 @@ GEMINI_MODELS = [
     "gemini-1.5-flash-8b",
 ]
 
-TRANSLATE_PROMPT = """تو یه خبرنگار جنگی حرفه‌ای هستی. این خبرها رو به فارسی برگردون.
+# تشخیص متن فارسی
+def _is_farsi(text: str) -> bool:
+    fa_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+    return fa_chars / max(len(text), 1) > 0.3
+
+# ترجمه رایگان یک متن از انگلیسی به فارسی با MyMemory
+async def _translate_mymemory(client: httpx.AsyncClient, text: str) -> str:
+    """MyMemory API — رایگان، بدون کلید، تا ۵۰۰۰ کاراکتر در روز"""
+    if not text or _is_farsi(text):
+        return text
+    try:
+        url = "https://api.mymemory.translated.net/get"
+        r = await client.get(url,
+            params={"q": text[:500], "langpair": "en|fa", "de": "warbot@github.com"},
+            timeout=httpx.Timeout(8.0))
+        if r.status_code == 200:
+            data = r.json()
+            tr = data.get("responseData", {}).get("translatedText", "")
+            # MyMemory گاهی MYMEMORY WARNING برمی‌گرداند
+            if tr and "MYMEMORY WARNING" not in tr and len(tr) > 5:
+                return tr
+    except Exception as e:
+        log.debug(f"MyMemory: {e}")
+    return text
+
+GEMINI_PROMPT = """تو یک خبرنگار جنگی حرفه‌ای هستی. این خبرهای نظامی را به فارسی ترجمه کن.
+
+دقیقاً این ساختار را رعایت کن:
+###ITEM_0###
+T: [عنوان فارسی در یک خط]
+B: [متن فارسی کامل]
+###ITEM_1###
+T: [عنوان فارسی]
+B: [متن فارسی]
 
 قوانین:
-۱. فارسی روان و کامل — هیچ چیز حذف نشود
-۲. نقل‌قول‌ها را عین‌العین با گیومه: «جمله گفته‌شده»
-۳. اسامی دقیق: Netanyahu=نتانیاهو، Khamenei=خامنه‌ای، IRGC=سپاه، IDF=ارتش اسراییل
-۴. آمار و تاریخ را حفظ کن
-۵. اگه خبر فارسی است: فقط ویرایش کن بدون تغییر محتوا
-
-فرمت خروجی:
-###ITEM_0###
-[ترجمه فارسی کامل]
-###ITEM_1###
-[ترجمه فارسی کامل]
+- اسامی: Netanyahu=نتانیاهو، Khamenei=خامنه‌ای، IRGC=سپاه، IDF=ارتش اسراییل، CENTCOM=ستاد مرکزی آمریکا
+- اعداد، آمار، مکان‌ها را دقیق نگه‌دار
+- اگه خبر فارسیه: فقط پاکیزه‌سازی کن
 
 ===خبرها===
 {items}"""
 
-async def translate_batch(client: httpx.AsyncClient, articles: list) -> list:
-    if not GEMINI_API_KEY or not articles: return articles
+async def _translate_gemini(client: httpx.AsyncClient, articles: list) -> list | None:
+    """ترجمه با Gemini — None اگه fail شد"""
+    if not GEMINI_API_KEY:
+        return None
     items_txt = "".join(
-        f"###ITEM_{i}###\nTITLE: {t[:400]}\nBODY: {s[:600]}\n"
+        f"###ITEM_{i}###\nEN_TITLE: {t[:300]}\nEN_BODY: {s[:400]}\n\n"
         for i, (t, s) in enumerate(articles)
     )
     state = {}
@@ -770,29 +1148,87 @@ async def translate_batch(client: httpx.AsyncClient, articles: list) -> list:
     except: pass
     models = state.get("models_order", GEMINI_MODELS)
     base   = "https://generativelanguage.googleapis.com/v1beta/models"
+
     for model in models:
         try:
             r = await client.post(
                 f"{base}/{model}:generateContent?key={GEMINI_API_KEY}",
                 json={
-                    "contents": [{"parts": [{"text": TRANSLATE_PROMPT.format(items=items_txt)}]}],
+                    "contents": [{"parts": [{"text": GEMINI_PROMPT.format(items=items_txt)}]}],
                     "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
                 },
-                timeout=httpx.Timeout(30.0)
+                timeout=httpx.Timeout(40.0)
             )
-            if r.status_code in (429, 503): continue
-            if r.status_code != 200: continue
+            if r.status_code == 429:
+                log.warning(f"Gemini {model}: rate-limit"); continue
+            if r.status_code != 200:
+                log.warning(f"Gemini {model}: HTTP {r.status_code} — {r.text[:200]}"); continue
+
             text_out = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            results  = list(articles)
+            log.info(f"🌐 Gemini {model} OK")
+
+            results = list(articles)
+            ok_count = 0
             for i, (orig_t, orig_s) in enumerate(articles):
-                m = re.search(rf"###ITEM_{i}###\s*(.*?)(?=###ITEM_|\Z)", text_out, re.DOTALL)
-                if m:
-                    tr = m.group(1).strip()
-                    if len(tr) > 10: results[i] = (tr, orig_s)
+                blk = re.search(rf"###ITEM_{i}###\s*(.*?)(?=###ITEM_\d+###|\Z)", text_out, re.DOTALL)
+                if not blk: continue
+                block   = blk.group(1)
+                t_match = re.search(r"^T:\s*(.+)$", block, re.MULTILINE)
+                b_match = re.search(r"^B:\s*([\s\S]+?)$", block, re.MULTILINE)
+                fa_t = t_match.group(1).strip() if t_match else ""
+                fa_b = b_match.group(1).strip() if b_match else ""
+                # fallback: همه block را عنوان بگیر
+                if not fa_t:
+                    fa_t = block.strip().split('\n')[0]
+                if len(fa_t) > 5:
+                    results[i] = (fa_t, fa_b or orig_s)
+                    ok_count += 1
+            log.info(f"🌐 ترجمه: {ok_count}/{len(articles)} خبر")
+            # مدل کارآمد را اول بگذار
+            state["models_order"] = [model] + [m for m in models if m != model]
+            json.dump(state, open(GEMINI_STATE_FILE, "w"))
             return results
         except Exception as e:
-            log.debug(f"Gemini {model}: {e}"); continue
-    return articles
+            log.warning(f"Gemini {model}: {e}"); continue
+    return None
+
+async def translate_batch(client: httpx.AsyncClient, articles: list) -> list:
+    """
+    ترجمه با اولویت:
+    1. Gemini (اگه API key داریم)
+    2. MyMemory رایگان (فقط عنوان)
+    3. متن اصلی (بدون ترجمه)
+    """
+    if not articles:
+        return []
+
+    results = list(articles)
+
+    # ── مرحله ۱: Gemini ───────────────────────────────────────────────
+    if GEMINI_API_KEY:
+        log.info(f"🌐 Gemini: ترجمه {len(articles)} خبر...")
+        gemini_res = await _translate_gemini(client, articles)
+        if gemini_res:
+            return gemini_res
+        log.warning("🌐 Gemini fail — fallback به MyMemory")
+    else:
+        log.info("🌐 GEMINI_API_KEY تنظیم نشده — استفاده از MyMemory رایگان")
+
+    # ── مرحله ۲: MyMemory — عنوان را ترجمه می‌کند ───────────────────
+    log.info(f"🌐 MyMemory: ترجمه {len(articles)} عنوان...")
+    sema = asyncio.Semaphore(5)
+
+    async def _tr(orig_t, orig_s):
+        async with sema:
+            if _is_farsi(orig_t):
+                return (orig_t, orig_s)
+            fa_t = await _translate_mymemory(client, orig_t)
+            return (fa_t, orig_s)
+
+    translated = await asyncio.gather(*[_tr(t, s) for t, s in articles])
+    ok = sum(1 for i, (fa, _) in enumerate(translated) if fa != articles[i][0])
+    log.info(f"🌐 MyMemory: {ok}/{len(articles)} ترجمه شد")
+    return list(translated)
 
 # ══════════════════════════════════════════════════════════════════════════
 # Sentiment
@@ -1040,8 +1476,8 @@ async def main():
         # ── ADS-B + fetch موازی ───────────────────────────────────────
         flight_task = asyncio.create_task(fetch_military_flights(client))
         raw_task    = asyncio.create_task(fetch_all(client, cutoff))
-        flight_msgs, raw = await asyncio.gather(flight_task, raw_task)
-        log.info(f"📥 {len(raw)} آیتم خام  ✈️ {len(flight_msgs)} تحرک")
+        (flight_msgs, flight_aircraft), raw = await asyncio.gather(flight_task, raw_task)
+        log.info(f"📥 {len(raw)} آیتم خام  ✈️ {len(flight_msgs)} تحرک ({len(flight_aircraft)} با موقعیت)")
 
         # ── پردازش ───────────────────────────────────────────────────
         collected = []
@@ -1086,10 +1522,31 @@ async def main():
             log.warning(f"⚠️ {len(collected)} → {MAX_NEW_PER_RUN} (برش داده شد)")
             collected = collected[-MAX_NEW_PER_RUN:]
 
-        # ── ADS-B ────────────────────────────────────────────────────
-        for msg in flight_msgs[:3]:
-            await tg_send_text(client, msg)
-            await asyncio.sleep(0.5)
+        # ── ADS-B — نقشه + پیام‌ها ──────────────────────────────────────
+        if flight_aircraft:
+            # نقشه PIL با موقعیت هواپیماها
+            map_buf = make_flight_map(flight_aircraft)
+            if map_buf:
+                regions = set(a["region"] for a in flight_aircraft)
+                cap_parts = [f"✈️ <b>تحرکات هوایی نظامی — {' | '.join(regions)}</b>"]
+                for ac in flight_aircraft[:8]:
+                    cap_parts.append(
+                        f"• <code>{ac['callsign']}</code> ({ac['type']}) "
+                        f"ارتفاع:{int(ac['alt'])//1000 if ac['alt'] else '?'}k ft "
+                        f"سرعت:{ac['gs']} kt — {ac['region']}"
+                    )
+                cap_parts.append(f"\n🕐 {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
+                await tg_send_photo(client, map_buf, "\n".join(cap_parts))
+                await asyncio.sleep(0.8)
+            else:
+                # بدون PIL: ارسال متنی
+                for msg in flight_msgs[:5]:
+                    await tg_send_text(client, msg)
+                    await asyncio.sleep(0.5)
+        elif flight_msgs:
+            for msg in flight_msgs[:3]:
+                await tg_send_text(client, msg)
+                await asyncio.sleep(0.5)
 
         if not collected:
             log.info("💤 خبر جنگی جدیدی نیست")
@@ -1111,43 +1568,47 @@ async def main():
         # ── ارسال ─────────────────────────────────────────────────────
         sent = 0
         for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
-            fa, _    = translations[i]
+            fa_title, fa_body = translations[i]
             en_title = arts_in[i][0]
             en_body  = arts_in[i][1]
             link     = entry.get("link", "")
             dt_str   = format_dt(entry)
-            display  = fa if (fa and fa != en_title and len(fa) > 5) else en_title
-            urgent   = any(w in (fa + en_title).lower() for w in [
-                "attack","strike","killed","bomb","explosion","nuclear",
-                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای",
+
+            # نمایش: فارسی اگه ترجمه شده، وگرنه انگلیسی
+            display   = fa_title if (fa_title and fa_title != en_title and len(fa_title) > 5) else en_title
+            # متن توضیح: فارسی اول
+            body_disp = fa_body  if (fa_body  and len(fa_body)  > 10) else en_body
+
+            urgent = any(w in (fa_title + en_title + fa_body).lower() for w in [
+                "attack","strike","killed","bomb","explosion","nuclear","missile",
+                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری",
             ])
 
-            sentiment_icons = analyze_sentiment(f"{fa} {en_title} {en_body}")
+            sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title} {en_body}")
             s_bar      = sentiment_bar(sentiment_icons)
             importance = calc_importance(en_title, en_body, sentiment_icons, stype)
             src_icon   = "🏛️" if is_emb else ("𝕏" if stype=="tw" else ("📢" if stype=="tg" else "📡"))
 
-            log.info(f"  → [{stype}] imp={importance}  {en_title[:60]}")
+            log.info(f"  → [{stype}] imp={importance}  {display[:60]}")
 
             card_sent = False
             if PIL_OK:
-                buf = make_news_card(en_title,
-                                     fa if (fa and fa != en_title) else "",
-                                     src_name, dt_str, urgent, sentiment_icons)
+                buf = make_news_card(display, "", src_name, dt_str, urgent, sentiment_icons)
                 if buf:
                     cap  = f"{s_bar}\n\n<b>{esc(display)}</b>"
-                    # body فقط اگه اطلاعات اضافه دارد
-                    if en_body and len(en_body) > 40 and en_body.lower() not in en_title.lower():
-                        cap += f"\n\n<i>{esc(trim(en_body, 600))}</i>"
+                    if body_disp and len(body_disp) > 30 and body_disp.lower()[:80] not in display.lower():
+                        cap += f"\n\n{esc(trim(body_disp, 700))}"
                     cap += f"\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
+                    if link: cap += f"\n🔗 {link}"
                     if await tg_send_photo(client, buf, cap):
                         card_sent = True
 
             if not card_sent:
                 parts = [s_bar, f"<b>{esc(display)}</b>"]
-                if en_body and len(en_body) > 40 and en_body.lower() not in en_title.lower():
-                    parts += ["", f"<i>{esc(trim(en_body, 700))}</i>"]
+                if body_disp and len(body_disp) > 30 and body_disp.lower()[:80] not in display.lower():
+                    parts += ["", esc(trim(body_disp, 800))]
                 parts += ["", f"─── {src_icon} <b>{esc(src_name)}</b>  {dt_str}"]
+                if link: parts.append(f"🔗 {link}")
                 if await tg_send_text(client, "\n".join(parts)):
                     card_sent = True
 
