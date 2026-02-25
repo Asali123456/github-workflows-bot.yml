@@ -1,4 +1,4 @@
-import os, json, hashlib, asyncio, logging, re, random, io
+import os, json, hashlib, asyncio, logging, re, random, io, time
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
@@ -32,20 +32,58 @@ TITLE_HASH_FILE   = "title_hashes.json"
 GEMINI_STATE_FILE = "gemini_state.json"
 FLIGHT_ALERT_FILE = "flight_alerts.json"
 
-MAX_NEW_PER_RUN   = 30
-MAX_MSG_LEN       = 4096
-SEND_DELAY        = 2
-CUTOFF_HOURS      = 4
-TG_CUTOFF_HOURS   = 1
-JACCARD_THRESHOLD = 0.38   # کمتر = dedup قوی‌تر (cross-source)
+MAX_NEW_PER_RUN    = 20     # حداکثر خبر per run — اولویت جدیدترین
+TW_HANDLES_PER_RUN = 20    # handle‌های توییتر per run (از ۴۷)
+MAX_MSG_LEN        = 4096
+SEND_DELAY         = 0.8   # ثانیه بین پیام‌ها
+CUTOFF_HOURS       = 4
+TG_CUTOFF_HOURS    = 2
+JACCARD_THRESHOLD  = 0.38
+RSS_TIMEOUT        = 8.0
+TG_TIMEOUT         = 10.0
+TW_TIMEOUT         = 9.0
+HIGH_URGENCY_ICONS = {"💀","🔴","💥"}
+MAX_ARTICLE_LEN    = 3000
+MAX_TITLE_LEN      = 600
 
-# دسته‌های ماکرو برای dedup — هر عضو هر گروه با عضو دیگر = همون نوع رویداد
-_VIOLENCE_CODES  = {"MSL","AIR","ATK","KIA","DEF","EXP"}   # حمله/تلفات/رهگیری
-_POLITICAL_CODES = {"THR","DIP","SAN","NUC","SPY","STM"}   # تهدید/دیپلماسی/تحریم
+# دسته‌های ماکرو برای dedup
+_VIOLENCE_CODES  = {"MSL","AIR","ATK","KIA","DEF","EXP"}
+_POLITICAL_CODES = {"THR","DIP","SAN","NUC","SPY","STM"}
 TEHRAN_TZ         = pytz.timezone("Asia/Tehran")
+
+# ── امتیاز اهمیت خبر ─────────────────────────────────────────────────
+# خبرهایی با score ≥ RICH_CARD_THRESHOLD → کارت تفصیلی (article fetch)
+RICH_CARD_THRESHOLD = 7
+BREAKING_KEYWORDS   = [
+    "breaking","urgent","alert","just in","developing","confirmed",
+    "explosion","airstrike","killed","dead","war","attack","strike",
+    "nuclear","bomb","missile","assassinated","coup","invasion",
+    "حمله","کشته","انفجار","شهید","موشک","اعلام جنگ","تهاجم","فوری","خبر فوری",
+]
+IMPORTANCE_BOOST = {
+    "💀": 4, "🔴": 3, "💥": 3, "🚀": 3, "☢️": 3,
+    "✈️": 2, "🚢": 2, "🛡️": 2, "🕵️": 2,
+    "🔥": 1, "💰": 1, "⚠️": 1,
+}
+
+def calc_importance(title: str, body: str, sentiment_icons: list, stype: str) -> int:
+    """
+    امتیاز اهمیت ۰-۱۰:
+    3+ برای sentiment icons
+    2+ برای breaking keywords
+    1+ برای منابع رسمی (tw=CENTCOM/IDF/…)
+    """
+    txt = (title + " " + body).lower()
+    score = sum(IMPORTANCE_BOOST.get(ic, 0) for ic in sentiment_icons)
+    if any(k in txt for k in BREAKING_KEYWORDS):
+        score += 2
+    if stype in ("tw",) and score > 0:   # توییت رسمی وزن بیشتری دارد
+        score += 1
+    return min(score, 10)
 
 def get_cutoff(h=None):
     return datetime.now(timezone.utc) - timedelta(hours=h or CUTOFF_HOURS)
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # 🇮🇷  ایران  ──────────────────────────────────────────────────────────────
@@ -292,133 +330,190 @@ TWITTER_HANDLES = [
     ("⚠️ DEFCONLevel",            "DEFCONLevel"),
 ]
 
-# ── لیست پایه (fallback اگه status.d420.de در دسترس نبود)
-#    منبع: github.com/wiki/zedeus/nitter/Instances.md  — تأیید شده ۲۰۲۶
+# ──────────────────────────────────────────────────────────────────────────
+# 𝕏  Twitter/X — دریافت از دو منبع: RSSHub + Nitter
+#
+# مشکل اصلی قبلی: GitHub Actions IP توسط Nitter instances block می‌شد
+# راه‌حل: RSSHub را به عنوان منبع اول + Nitter به عنوان fallback
+#
+# RSSHub: سرویس RSS برای شبکه‌های اجتماعی — instance های عمومی رایگان
+# Nitter: mirror توییتر — probe واقعی برای یافتن instance های فعال
+# ──────────────────────────────────────────────────────────────────────────
+
+# RSSHub public instances — برای Twitter/X
+RSSHUB_INSTANCES = [
+    "https://rsshub.rss.now.sh",
+    "https://rsshub.app",
+    "https://rss.shab.fun",
+    "https://rsshub.moeyy.xyz",
+    "https://rsshub.feeded.xyz",
+    "https://rsshub.atgaw.cc",
+]
+
+# Nitter instances — fallback
 NITTER_FALLBACK = [
     "https://xcancel.com",
     "https://nitter.poast.org",
     "https://nitter.privacyredirect.com",
     "https://lightbrd.com",
-    "https://nitter.space",
     "https://nitter.tiekoetter.com",
     "https://nuku.trabun.org",
     "https://nitter.catsarch.com",
+    "https://nitter.space",
 ]
 
 NITTER_CACHE_FILE = "nitter_cache.json"
-NITTER_CACHE_TTL  = 3600   # ۱ ساعت — بین run‌ها در git ذخیره می‌شه
+NITTER_CACHE_TTL  = 1800   # ۳۰ دقیقه
+
 NITTER_HDR = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
     "Accept": "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "Cache-Control": "no-cache",
-    "DNT": "1",
 }
 
-# ── pool در‌حافظه — یک‌بار در هر process اجرا ساخته می‌شه
+TW_TIMEOUT = 8.0
+
 _nitter_pool: list[str] = []
-
-# ── Rate-limit control برای Nitter ──────────────────────────────────────
-# حداکثر ۴ request همزمان به کل Nitter (نه per-instance)
-# بدون delay → nitter instances rate-limit می‌کنند (معمولاً ≤3 req/s)
-_NITTER_SEMA: asyncio.Semaphore | None = None   # در main() مقداردهی می‌شه
-# Per-instance آخرین زمان request → جلوگیری از 2 req/s به یه instance
-_NITTER_INST_LAST: dict[str, float] = {}
-
-async def _nitter_get(client: httpx.AsyncClient, url: str):
-    """
-    GET با rate-limit رعایت‌شده:
-    - سمافور کلی (max 4 همزمان) — مقداردهی در main()
-    - فاصله ≥ 0.8 ثانیه بین request‌های یه instance
-    """
-    global _NITTER_SEMA
-    inst = "/".join(url.split("/")[:3])   # https://xcancel.com
-
-    sema = _NITTER_SEMA if _NITTER_SEMA is not None else asyncio.Semaphore(4)
-    async with sema:
-        # فاصله per-instance
-        loop = asyncio.get_running_loop()
-        now  = loop.time()
-        last = _NITTER_INST_LAST.get(inst, 0)
-        gap  = now - last
-        if gap < 0.8:
-            await asyncio.sleep(0.8 - gap)
-        _NITTER_INST_LAST[inst] = loop.time()
-
-        try:
-            return await client.get(url, headers=NITTER_HDR, timeout=httpx.Timeout(9.0))
-        except Exception as e:
-            log.debug(f"𝕏 _nitter_get: {type(e).__name__} — {url[:50]}")
-            return None
-
+_rsshub_pool: list[str] = []
+_NITTER_SEMA: asyncio.Semaphore | None = None
 
 def _load_nitter_disk() -> tuple[list[str], float]:
     try:
         if Path(NITTER_CACHE_FILE).exists():
             d = json.load(open(NITTER_CACHE_FILE))
-            return d.get("instances", []), d.get("ts", 0.0)
+            return d.get("nitter", []), d.get("ts", 0.0)
     except: pass
     return [], 0.0
 
-def _save_nitter_disk(instances: list[str]):
-    json.dump({"instances": instances, "ts": datetime.now(timezone.utc).timestamp()},
+def _save_nitter_disk(nitter: list[str]):
+    json.dump({"nitter": nitter, "ts": datetime.now(timezone.utc).timestamp()},
               open(NITTER_CACHE_FILE, "w"))
 
-async def build_nitter_pool(client: httpx.AsyncClient) -> list[str]:
-    """
-    ساخت pool از Nitter instances — بدون probe (سریع)
-    ۱. کش git (nitter_cache.json) — TTL=1h — بین run‌ها persist می‌شه
-    ۲. status.d420.de API — مرتب بر اساس points (کار می‌کنه = بهتر)
-    ۳. NITTER_FALLBACK — همیشه موجود
-    زمان: < 2 ثانیه (فقط یه HTTP GET)
-    """
-    global _nitter_pool
+def _is_rss_body(body: str, ct: str) -> bool:
+    return ("xml" in ct) or ("<rss" in body[:500]) or body.lstrip()[:6].startswith("<?xml")
 
-    if _nitter_pool:
-        return _nitter_pool
+async def _fetch_rss_url(client: httpx.AsyncClient, url: str,
+                          timeout: float = TW_TIMEOUT) -> list:
+    """
+    GET یک URL و parse RSS — برمی‌گرداند list از entries یا []
+    """
+    try:
+        r = await client.get(url, headers=NITTER_HDR,
+                             timeout=httpx.Timeout(connect=4.0, read=timeout,
+                                                   write=4.0, pool=4.0))
+        if r.status_code not in (200,):
+            return []
+        if not _is_rss_body(r.text, r.headers.get("content-type", "")):
+            return []
+        entries = feedparser.parse(r.text).entries
+        return [e for e in entries if len(e.get("title", "").strip()) > 5]
+    except Exception:
+        return []
 
-    # بررسی کش git
+async def _probe_nitter(client: httpx.AsyncClient, inst: str) -> tuple[str, float] | None:
+    """Probe یه Nitter instance — برمی‌گرداند (url, ms) یا None"""
+    t0 = asyncio.get_running_loop().time()
+    entries = await _fetch_rss_url(client, f"{inst}/CENTCOM/rss", timeout=5.0)
+    if entries:
+        return inst, (asyncio.get_running_loop().time() - t0) * 1000
+    return None
+
+async def _probe_rsshub(client: httpx.AsyncClient, inst: str) -> tuple[str, float] | None:
+    """Probe یه RSSHub instance — test با CENTCOM"""
+    t0 = asyncio.get_running_loop().time()
+    entries = await _fetch_rss_url(client, f"{inst}/twitter/user/CENTCOM", timeout=6.0)
+    if entries:
+        return inst, (asyncio.get_running_loop().time() - t0) * 1000
+    return None
+
+async def build_twitter_pools(client: httpx.AsyncClient):
+    """
+    ساخت pool از Nitter و RSSHub — موازی
+    ذخیره در کش برای NITTER_CACHE_TTL ثانیه
+    """
+    global _nitter_pool, _rsshub_pool
+
+    if _nitter_pool or _rsshub_pool:
+        return   # قبلاً ساخته شده
+
+    # بررسی کش
     cached, ts = _load_nitter_disk()
     age = datetime.now(timezone.utc).timestamp() - ts
     if cached and age < NITTER_CACHE_TTL:
-        log.info(f"🔌 Nitter: {len(cached)} inst از cache (age={int(age//60)}m)")
         _nitter_pool = cached
-        return cached
+        log.info(f"𝕏 Nitter از cache: {len(_nitter_pool)} inst")
+        return
 
-    # واکشی از status.d420.de
-    candidates: list[tuple[str, float]] = []
-    try:
-        r = await client.get(
-            "https://status.d420.de/api/v1/instances",
-            headers={"User-Agent": "WarBot/14"},
-            timeout=httpx.Timeout(8.0)
-        )
-        if r.status_code == 200:
-            for inst in r.json():
-                url  = inst.get("url", "").rstrip("/")
-                pts  = float(inst.get("points", 0))
-                up   = inst.get("healthy", inst.get("up", False))
-                if url.startswith("https://") and (up or pts > 30):
-                    candidates.append((url, pts))
-            candidates.sort(key=lambda x: x[1], reverse=True)
-            log.info(f"🔌 status.d420.de: {len(candidates)} working inst")
-    except Exception as e:
-        log.warning(f"🔌 status.d420.de: {e} — fallback")
+    # probe موازی
+    log.info(f"𝕏 Probing {len(NITTER_FALLBACK)} Nitter + {len(RSSHUB_INSTANCES)} RSSHub...")
 
-    # merge با fallback
-    result_urls: list[str] = [u for u, _ in candidates[:10]]
-    known = set(result_urls)
-    for fb in NITTER_FALLBACK:
-        if fb not in known:
-            result_urls.append(fb)
+    sema = asyncio.Semaphore(10)
 
-    if not result_urls:
-        result_urls = NITTER_FALLBACK.copy()
+    async def safe_probe(coro):
+        async with sema:
+            try: return await coro
+            except: return None
 
-    _save_nitter_disk(result_urls)
-    _nitter_pool = result_urls
-    log.info(f"🔌 Nitter pool: {len(result_urls)} instances")
-    return result_urls
+    nitter_tasks  = [safe_probe(_probe_nitter(client, u)) for u in NITTER_FALLBACK]
+    rsshub_tasks  = [safe_probe(_probe_rsshub(client, u)) for u in RSSHUB_INSTANCES]
+    all_results   = await asyncio.gather(*nitter_tasks, *rsshub_tasks)
+
+    n = len(NITTER_FALLBACK)
+    nitter_ok  = sorted([r for r in all_results[:n]  if r], key=lambda x: x[1])
+    rsshub_ok  = sorted([r for r in all_results[n:]  if r], key=lambda x: x[1])
+
+    _nitter_pool = [u for u, _ in nitter_ok]  or NITTER_FALLBACK[:3]
+    _rsshub_pool = [u for u, _ in rsshub_ok]
+
+    log.info(f"𝕏 Nitter: {len(_nitter_pool)} فعال | RSSHub: {len(_rsshub_pool)} فعال")
+    if nitter_ok:
+        log.info(f"  سریع‌ترین Nitter: {nitter_ok[0][0].split('//')[-1]} ({nitter_ok[0][1]:.0f}ms)")
+    if rsshub_ok:
+        log.info(f"  سریع‌ترین RSSHub: {rsshub_ok[0][0].split('//')[-1]} ({rsshub_ok[0][1]:.0f}ms)")
+
+    _save_nitter_disk(_nitter_pool)
+
+async def fetch_twitter(client: httpx.AsyncClient, label: str, handle: str) -> list:
+    """
+    دریافت توییت‌های یک handle — سه استراتژی به ترتیب اولویت:
+    1. RSSHub (سریع‌ترین instance کار‌کرده از probe)
+    2. Nitter (سریع‌ترین instance کار‌کرده از probe)
+    3. Fallback مستقیم به xcancel.com
+
+    سمافور کلی جلوگیری از بیش از ۱۰ request همزمان
+    """
+    sema = _NITTER_SEMA if _NITTER_SEMA is not None else asyncio.Semaphore(10)
+
+    async with sema:
+        # ── استراتژی ۱: RSSHub
+        for inst in (_rsshub_pool or RSSHUB_INSTANCES[:2]):
+            entries = await _fetch_rss_url(client, f"{inst}/twitter/user/{handle}")
+            if entries:
+                log.debug(f"𝕏 ✅ {handle} از RSSHub/{inst.split('//')[-1]}")
+                return [(e, f"𝕏 {label}", "tw", False) for e in entries]
+
+        # ── استراتژی ۲: Nitter
+        pool = _nitter_pool or NITTER_FALLBACK
+        start = abs(hash(handle)) % len(pool)
+        for inst in (pool * 2)[start: start + min(3, len(pool))]:
+            entries = await _fetch_rss_url(client, f"{inst}/{handle}/rss")
+            if entries:
+                log.debug(f"𝕏 ✅ {handle} از Nitter/{inst.split('//')[-1]}")
+                return [(e, f"𝕏 {label}", "tw", False) for e in entries]
+
+        # ── استراتژی ۳: xcancel.com مستقیم
+        entries = await _fetch_rss_url(client, f"https://xcancel.com/{handle}/rss")
+        if entries:
+            log.debug(f"𝕏 ✅ {handle} از xcancel.com (fallback)")
+            return [(e, f"𝕏 {label}", "tw", False) for e in entries]
+
+    log.debug(f"𝕏 ✗ {handle}: همه ۳ استراتژی fail")
+    return []
+
+
+
+
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -546,6 +641,145 @@ def _wrap_text(text:str, chars:int) -> list[str]:
             cur=w
     if cur: lines.append(cur)
     return lines
+
+# ──────────────────────────────────────────────────────────────────────────
+# 📰  Article Content Fetcher — برای خبرهای مهم (جایگزین screenshot)
+#
+# به جای browser screenshot:
+# - httpx GET صفحه → BeautifulSoup → استخراج متن اصلی مقاله
+# - ساخت PIL کارت غنی با متن کامل
+# این روش: سریع (< 2s)، بی‌نیاز به browser، سازگار با GitHub Actions
+# ──────────────────────────────────────────────────────────────────────────
+_ARTICLE_SELECTORS = [
+    "article", "[class*='article-body']", "[class*='post-body']",
+    "[class*='story-body']", "[class*='content-body']",
+    ".entry-content", ".post-content", ".article-text",
+    "[itemprop='articleBody']", ".body-content", "main",
+]
+_SKIP_TAGS = {"script","style","nav","header","footer","aside","form","button","iframe"}
+
+async def fetch_article_text(client: httpx.AsyncClient, url: str) -> str:
+    """
+    استخراج متن اصلی مقاله از URL — بدون browser
+    خروجی: متن کامل (حداکثر ۱۲۰۰ کاراکتر)
+    """
+    if not url or url.startswith("https://t.me"):
+        return ""
+    try:
+        hdrs = dict(COMMON_UA)
+        hdrs["Accept"] = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+        r = await client.get(url, timeout=httpx.Timeout(8.0), headers=hdrs,
+                             follow_redirects=True)
+        if r.status_code != 200:
+            return ""
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        # حذف تگ‌های غیرمفید
+        for tag in soup.find_all(_SKIP_TAGS):
+            tag.decompose()
+
+        # امتحان selector های متداول
+        for sel in _ARTICLE_SELECTORS:
+            el = soup.select_one(sel)
+            if el:
+                txt = el.get_text(" ", strip=True)
+                if len(txt) > 150:
+                    return txt[:1200]
+
+        # fallback: بزرگ‌ترین <p> block
+        paras = [p.get_text(" ", strip=True) for p in soup.find_all("p") if len(p.get_text()) > 60]
+        return " ".join(paras)[:1200] if paras else ""
+
+    except Exception:
+        return ""
+
+
+def make_rich_card(headline: str, fa_text: str, article_body: str,
+                   src: str, dt_str: str, urgent: bool,
+                   sentiment_icons: list) -> io.BytesIO | None:
+    """
+    PIL کارت غنی برای خبرهای مهم (importance ≥ RICH_CARD_THRESHOLD):
+    - هدر رنگی
+    - عنوان + متن کامل مقاله (wrapping)
+    - نوار sentiment در پایین
+    ابعاد: 960 × متغیر (حداقل 400px)
+    """
+    if not PIL_OK: return None
+    try:
+        W = 960
+        acc = _get_accent(src, urgent)
+        try:
+            F_src  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
+            F_head = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+            F_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+            F_em   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        except:
+            F_src = F_head = F_body = F_em = ImageFont.load_default()
+
+        # محاسبه ارتفاع پویا
+        display = fa_text if (fa_text and fa_text != headline and len(fa_text) > 5) else headline
+        head_lines = _wrap_text(display, 52)[:3]
+        body_text  = article_body[:800] if article_body else ""
+        body_lines = _wrap_text(body_text, 60)[:10] if body_text else []
+
+        H = 5 + 53 + 3 + 12 + len(head_lines)*30 + 10 + len(body_lines)*24 + 10 + 56
+        H = max(H, 320)
+
+        img = Image.new("RGB", (W, H), BG_DARK)
+        drw = ImageDraw.Draw(img)
+
+        # نوار بالا
+        drw.rectangle([(0,0),(W,5)], fill=acc)
+        drw.rectangle([(0,5),(W,58)], fill=BG_BAR)
+        drw.rectangle([(0,58),(W,61)], fill=acc)
+        drw.text((18,18), src[:55], font=F_src, fill=acc)
+        drw.text((W-175,18), dt_str[:25], font=F_src, fill=FG_GREY)
+
+        y = 72
+        # عنوان (RTL)
+        for line in head_lines:
+            drw.text((W-18, y), line, font=F_head, fill=FG_WHITE, anchor="ra")
+            y += 30
+        y += 8
+
+        # خط جداکننده
+        drw.line([(18, y),(W-18, y)], fill=(50,55,65), width=1)
+        y += 10
+
+        # متن مقاله
+        for line in body_lines:
+            drw.text((W-18, y), line, font=F_body, fill=(195,200,210), anchor="ra")
+            y += 24
+        y += 8
+
+        # نوار sentiment
+        drw.rectangle([(0, H-56),(W, H)], fill=BG_BAR)
+        drw.rectangle([(0, H-58),(W, H-56)], fill=acc)
+        ICON_BG = {
+            "💀":(140,20,20),"🔴":(180,30,30),"💥":(190,80,10),
+            "✈️":(20,90,160),"🚀":(100,20,160),"☢️":(0,130,50),
+            "🚢":(10,80,140),"🕵️":(60,55,70),"🛡️":(20,110,80),
+            "🔥":(180,60,0),"💰":(130,110,0),"⚠️":(160,110,0),
+            "🤝":(20,120,100),"📜":(60,80,100),"📰":(45,58,72),
+        }
+        x_pos = 16
+        for ico in (sentiment_icons or ["📰"])[:4]:
+            bg = ICON_BG.get(ico, (50,65,75))
+            drw.rounded_rectangle([(x_pos-2,H-52),(x_pos+38,H-6)], radius=7, fill=bg)
+            drw.text((x_pos+2,H-50), ico, font=F_em, fill=(255,255,255))
+            x_pos += 50
+
+        # نشانگر فوریت
+        if urgent:
+            drw.rectangle([(0,61),(5,H-58)], fill=acc)
+
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=85)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        log.debug(f"rich_card: {e}")
+        return None
 
 def make_news_card(headline:str, fa_text:str, src:str, dt_str:str,
                    link:str="", urgent:bool=False,
@@ -861,15 +1095,37 @@ def register_story(title: str, stories: list[dict]) -> list[dict]:
 # ──────────────────────────────────────────────────────────────────────────
 COMMON_UA = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; rv:121.0) Gecko/20100101 Firefox/121.0 WarBot/13"}
 
-async def fetch_rss(client:httpx.AsyncClient, feed:dict) -> list:
+async def fetch_rss(client: httpx.AsyncClient, feed: dict) -> list:
+    """
+    واکشی RSS با ETag/If-Modified-Since:
+    - 304 = تغییر نکرده → skip (صفر bandwidth)
+    - 200 = parse کامل → همه entries (فیلتر is_fresh در main)
+    timeout کوتاه → fail fast → سرعت کلی بالاتر
+    """
     try:
-        r = await client.get(feed["u"], timeout=httpx.Timeout(12.0), headers=COMMON_UA)
-        if r.status_code==200:
-            entries = feedparser.parse(r.text).entries or []
-            is_emb = id(feed) in EMBASSY_SET
-            return [(e, feed["n"], "rss", is_emb) for e in entries]
-    except: pass
-    return []
+        hdrs = dict(COMMON_UA)
+        if feed.get("_etag"):     hdrs["If-None-Match"]     = feed["_etag"]
+        if feed.get("_last_mod"): hdrs["If-Modified-Since"] = feed["_last_mod"]
+
+        r = await client.get(feed["u"],
+                             timeout=httpx.Timeout(connect=4.0, read=RSS_TIMEOUT,
+                                                   write=4.0, pool=4.0),
+                             headers=hdrs)
+        if r.status_code == 304: return []
+        if r.status_code != 200: return []
+
+        if r.headers.get("ETag"):          feed["_etag"]     = r.headers["ETag"]
+        if r.headers.get("Last-Modified"): feed["_last_mod"] = r.headers["Last-Modified"]
+
+        entries = feedparser.parse(r.text).entries or []
+        is_emb  = id(feed) in EMBASSY_SET
+        return [(e, feed["n"], "rss", is_emb) for e in entries]
+    except Exception:
+        return []
+
+
+
+
 
 async def fetch_telegram_channel(client:httpx.AsyncClient, label:str, handle:str) -> list:
     url = f"https://t.me/s/{handle}"
@@ -908,64 +1164,30 @@ async def fetch_telegram_channel(client:httpx.AsyncClient, label:str, handle:str
         log.debug(f"TG {handle}: {e}")
         return []
 
-async def fetch_twitter(client: httpx.AsyncClient, label: str, handle: str) -> list:
+
+
+
+
+
+async def fetch_all(client: httpx.AsyncClient, tw_idx: int = 0) -> list:
     """
-    دریافت RSS توییتر با rate-limit رعایت‌شده:
-    - سمافور کلی: max 4 همزمان (از _NITTER_SEMA)
-    - per-instance: ≥ 0.8s فاصله
-    - rotation بر اساس hash handle → توزیع بار
-    - حداکثر ۵ instance امتحان
+    واکشی موازی همه منابع:
+    - RSS: conditional GET (ETag) → سریع‌تر
+    - TG: آخرین ۲۰ پست هر کانال
+    - Twitter: فقط TW_HANDLES_PER_RUN handle (rotating) → جلوگیری از rate-limit
     """
-    pool = _nitter_pool or NITTER_FALLBACK
-    if not pool:
-        return []
+    # ── Nitter + RSSHub pool
+    log.info("𝕏 Probing Twitter sources...")
+    await build_twitter_pools(client)
+    log.info(f"𝕏 Nitter:{len(_nitter_pool)} | RSSHub:{len(_rsshub_pool)} | handles {tw_idx}–{tw_idx+TW_HANDLES_PER_RUN}/{len(TWITTER_HANDLES)}")
 
-    start   = abs(hash(handle)) % len(pool)
-    ordered = (pool * 2)[start: start + min(5, len(pool))]
+    # ── Twitter: rotating window
+    handles_this_run = (TWITTER_HANDLES * 2)[tw_idx: tw_idx + TW_HANDLES_PER_RUN]
 
-    for inst in ordered:
-        url = f"{inst}/{handle}/rss"
-        r   = await _nitter_get(client, url)
-        if r is None:
-            continue
-
-        if r.status_code == 429:
-            log.debug(f"𝕏 {handle}@{inst.split('//')[-1]}: rate-limited (429)")
-            continue
-        if r.status_code != 200:
-            log.debug(f"𝕏 {handle}@{inst.split('//')[-1]}: HTTP {r.status_code}")
-            continue
-
-        body   = r.text
-        ct     = r.headers.get("content-type", "")
-        is_rss = ("xml" in ct) or body.lstrip()[:6].startswith("<?xml") or ("<rss" in body[:500])
-        if not is_rss:
-            log.debug(f"𝕏 {handle}@{inst.split('//')[-1]}: HTML not RSS")
-            continue
-
-        entries = feedparser.parse(body).entries
-        valid   = [e for e in entries if len(e.get("title", "").strip()) > 5]
-        if valid:
-            log.debug(f"𝕏 ✅ {handle}: {len(valid)} tweets از {inst.split('//')[-1]}")
-            return [(e, f"𝕏 {label}", "tw", False) for e in valid]
-
-    log.debug(f"𝕏 ✗ {handle}: همه instances fail")
-    return []
-
-
-
-
-async def fetch_all(client: httpx.AsyncClient) -> list:
-    # ── مرحله ۱: ساخت Nitter pool قبل از همه task‌ها (بدون race condition)
-    log.info("🔌 ساخت Nitter pool...")
-    await build_nitter_pool(client)
-    pool_size = len(_nitter_pool)
-    log.info(f"🔌 {pool_size} instance فعال برای {len(TWITTER_HANDLES)} handle")
-
-    # ── مرحله ۲: همه task‌ها موازی
+    # ── همه task‌ها موازی
     rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
     tg_t  = [fetch_telegram_channel(client, l, h) for l, h in TELEGRAM_CHANNELS]
-    tw_t  = [fetch_twitter(client, l, h) for l, h in TWITTER_HANDLES]
+    tw_t  = [fetch_twitter(client, l, h) for l, h in handles_this_run]
 
     all_res = await asyncio.gather(*rss_t, *tg_t, *tw_t, return_exceptions=True)
 
@@ -975,11 +1197,11 @@ async def fetch_all(client: httpx.AsyncClient) -> list:
     for i, res in enumerate(all_res):
         if not isinstance(res, list): continue
         out.extend(res)
-        if i < n_rss:            rss_ok += bool(res)
-        elif i < n_rss + n_tg:   tg_ok  += bool(res)
-        else:                     tw_ok  += bool(res)
+        if   i < n_rss:            rss_ok += bool(res)
+        elif i < n_rss + n_tg:     tg_ok  += bool(res)
+        else:                      tw_ok  += bool(res)
 
-    log.info(f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)}  📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)}  𝕏:{tw_ok}/{len(TWITTER_HANDLES)}")
+    log.info(f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)}  📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)}  𝕏:{tw_ok}/{len(handles_this_run)}")
     return out
 
 
@@ -1015,34 +1237,35 @@ def pick_models(s):
                 r.append(m)
     return r or GEMINI_POOL
 
-TRANSLATE_PROMPT = """تو یه خبرنگار جنگی حرفه‌ای هستی. خبرها رو به فارسی ساده و روان خلاصه کن.
+TRANSLATE_PROMPT = """تو یه خبرنگار جنگی حرفه‌ای هستی. خبرهای جنگی رو به فارسی برگردون.
 
 قوانین سخت:
-۱. فارسی ساده عامیانه — مثل اینکه به دوستت می‌گی
-۲. یک جمله کوتاه (حداکثر دو) — خلاصه کامل خبر
-۳. اسامی مهم: نتانیاهو، خامنه‌ای، سپاه، IDF، سنتکام...
-۴. 🔴 = حمله/جنگ/کشته  ⚠️ = تهدید/موضع  🏛️ = سفارتخانه  ✈️ = تحرک هوایی  📢 = کانال تلگرام
-۵. هیچ توضیح اضافه ندی
-۶. پیام‌های عربی/فارسی تلگرامی رو دقیق ترجمه کن
+۱. فارسی ساده روان — اما کامل و دقیق
+۲. نقل‌قول‌ها رو عین‌العین بذار: «عین جمله گفته‌شده»
+۳. اسامی رو دقیق ترجمه کن: Netanyahu=نتانیاهو، Khamenei=خامنه‌ای، IRGC=سپاه، IDF=ارتش اسرائیل
+۴. آمار و اعداد رو حفظ کن: تعداد کشته، فاصله، زمان
+۵. هیچ چیزی از خبر رو حذف نکن — خلاصه نکن
+۶. اگه خبر کوتاهه، همه‌اش رو بنویس
+۷. ایموجی اول جمله: 🔴=حمله/کشته  💥=انفجار  🚀=موشک/پهپاد  ☢️=هسته‌ای  ✈️=هوایی  ⚠️=تهدید  🤝=مذاکره  💰=تحریم  🛡️=رهگیری  📡=خبر رسمی
 
-مثال:
-- "🔴 اسرائیل امشب با موشک به رآکتور فردو حمله کرد"
-- "⚠️ خامنه‌ای: اگه آمریکا وارد جنگ بشه پایگاه‌هاشون هدفه"
-- "🏛️ سفارت آمریکا: همه شهروندان آمریکایی ایران رو فوری ترک کنن"
-- "✈️ بمب‌افکن B-52 در خلیج‌فارس رصد شد"
+مثال‌های درست:
+- «🔴 اسرائیل با ۱۲ موشک به پایگاه هوایی بندرعباس حمله کرد. سپاه: ۳ نفر شهید شدند. آمریکا اعلام کرد از این حمله بی‌خبر بوده.»
+- «⚠️ خامنه‌ای در سخنرانی گفت: «اگه آمریکا وارد این جنگ بشه، همه پایگاه‌هاشو در خاورمیانه هدف می‌گیریم.»»
+- «🚀 سنتکام تأیید کرد: رادار پاتریوت در قطر یه موشک بالستیک ایرانی رو در ارتفاع ۸۰ کیلومتری رهگیری کرد.»
 
-فرمت:
+فرمت خروجی:
 ###ITEM_0###
-[خلاصه فارسی]
+[خبر فارسی کامل]
 ###ITEM_1###
-[خلاصه فارسی]
+[خبر فارسی کامل]
 
 ===خبرها===
 {items}"""
 
+
 async def translate_batch(client:httpx.AsyncClient, articles:list) -> list:
     if not GEMINI_API_KEY or not articles: return articles
-    items_txt = "".join(f"###ITEM_{i}###\nTITLE: {t[:280]}\nBODY: {s[:350]}\n" for i,(t,s) in enumerate(articles))
+    items_txt = "".join(f"###ITEM_{i}###\nTITLE: {t[:400]}\nBODY: {s[:800]}\n" for i,(t,s) in enumerate(articles))
     payload = {"contents":[{"parts":[{"text":TRANSLATE_PROMPT.format(items=items_txt)}]}],
                "generationConfig":{"temperature":0.1,"maxOutputTokens":8192}}
     state = load_gstate()
@@ -1112,34 +1335,46 @@ def save_seen(seen: set):
     json.dump(list(seen)[-30000:], open(SEEN_FILE, "w"))
 
 # ── زمان آخرین اجرا برای cutoff بلادرنگ ──
-RUN_STATE_FILE = "run_state.json"
-REALTIME_BUFFER_MIN = 3    # ۳ دقیقه buffer برای جبران تأخیر RSS
-MAX_LOOKBACK_MIN    = 20   # اگه اولین بار است، ۲۰ دقیقه به عقب برو
+RUN_STATE_FILE      = "run_state.json"
+REALTIME_BUFFER_MIN = 0     # صفر buffer → اولین نفر بودن (فاصله RSS عادتاً ≤2min)
+MAX_LOOKBACK_MIN    = 30    # اولین اجرا: ۳۰ دقیقه به عقب
 
-def load_last_run() -> datetime:
-    """زمان آخرین اجرای موفق"""
+def load_last_run() -> tuple[datetime, int]:
+    """(زمان آخرین اجرا، twitter rotation index)"""
     try:
         if Path(RUN_STATE_FILE).exists():
-            d = json.load(open(RUN_STATE_FILE))
-            ts = d.get("last_run", 0)
+            d   = json.load(open(RUN_STATE_FILE))
+            ts  = d.get("last_run", 0)
+            idx = int(d.get("tw_idx", 0))
             if ts:
-                return datetime.fromtimestamp(ts, tz=timezone.utc)
+                return datetime.fromtimestamp(ts, tz=timezone.utc), idx
     except: pass
-    # اولین اجرا: ۲۰ دقیقه پیش
-    return datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN)
+    # اولین اجرا → ۳۰ دقیقه به عقب
+    return datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN), 0
 
-def save_last_run():
-    json.dump({"last_run": datetime.now(timezone.utc).timestamp()}, open(RUN_STATE_FILE, "w"))
+def save_last_run(tw_idx: int = 0):
+    existing = {}
+    try:
+        if Path(RUN_STATE_FILE).exists():
+            existing = json.load(open(RUN_STATE_FILE))
+    except: pass
+    existing.update({"last_run": datetime.now(timezone.utc).timestamp(), "tw_idx": tw_idx})
+    json.dump(existing, open(RUN_STATE_FILE, "w"))
 
-def get_realtime_cutoff() -> datetime:
+def get_realtime_cutoff() -> tuple[datetime, int]:
     """
-    cutoff بلادرنگ = آخرین اجرا - BUFFER
-    حداکثر ۲۰ دقیقه به عقب (جلوگیری از پردازش بیش از حد)
+    (cutoff بلادرنگ، twitter rotation index)
+    cutoff = دقیقاً زمان آخرین اجرا (بدون buffer)
+    در عمل RSS/TG itemهای بین دو run پردازش می‌شن
     """
-    last = load_last_run()
-    cutoff_from_last = last - timedelta(minutes=REALTIME_BUFFER_MIN)
+    last, tw_idx = load_last_run()
+    # cutoff = آخرین اجرا (بدون buffer منفی)
+    # حداکثر MAX_LOOKBACK_MIN برای جلوگیری از سیل خبر در اولین اجرا
     cutoff_max = datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN)
-    return max(cutoff_from_last, cutoff_max)
+    return max(last, cutoff_max), tw_idx
+
+
+
 
 
 
@@ -1275,33 +1510,29 @@ async def main():
     if not BOT_TOKEN or not CHANNEL_ID:
         log.error("❌ BOT_TOKEN یا CHANNEL_ID نیست!"); return
 
-    # ── Nitter rate-limit semaphore (یه بار per run)
-    _NITTER_SEMA = asyncio.Semaphore(4)   # max 4 Nitter request همزمان از کل 47 handle
+    # ── Semaphore برای Nitter — پس از probe مقدار بالاتر OK است
+    _NITTER_SEMA = asyncio.Semaphore(10)   # max 10 Twitter request همزمان
 
     seen    = load_seen()
     stories = load_stories()
-    cutoff  = get_realtime_cutoff()
+    cutoff, tw_idx = get_realtime_cutoff()
 
     log.info("=" * 65)
     log.info(f"🚀 WarBot v14  |  {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
-    log.info(f"   📡 {len(ALL_RSS_FEEDS)} RSS  📢 {len(TELEGRAM_CHANNELS)} TG  𝕏 {len(TWITTER_HANDLES)} TW  ✈️ ADS-B")
+    log.info(f"   📡 {len(ALL_RSS_FEEDS)} RSS  📢 {len(TELEGRAM_CHANNELS)} TG  𝕏 {len(TWITTER_HANDLES)} TW")
     log.info(f"   🎨 PIL: {'✅' if PIL_OK else '❌'}  |  🧠 Triple+Stemmed dedup")
-    log.info(f"   ⏱  cutoff: {cutoff.astimezone(TEHRAN_TZ).strftime('%H:%M')} تهران")
+    log.info(f"   ⏱  cutoff: {cutoff.astimezone(TEHRAN_TZ).strftime('%H:%M')} تهران  |  𝕏 idx:{tw_idx}")
     log.info(f"   💾 seen:{len(seen)}  stories:{len(stories)}")
     log.info("=" * 65)
 
-    limits = httpx.Limits(max_connections=60, max_keepalive_connections=20)
+    limits = httpx.Limits(max_connections=80, max_keepalive_connections=30)
     async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
 
-        # ── ردیابی نظامی هوایی
-        log.info("✈️ ADS-B ردیابی...")
-        flight_msgs = await fetch_military_flights(client)
-        log.info(f"  ✈️ {len(flight_msgs)} تحرک نظامی")
-
-        # ── دریافت منابع (Nitter pool قبلاً داخل fetch_all ساخته می‌شه)
-        log.info("⏬ دریافت منابع...")
-        raw = await fetch_all(client)
-        log.info(f"📥 {len(raw)} آیتم خام")
+        # ── ADS-B و fetch_all موازی
+        flight_task = asyncio.create_task(fetch_military_flights(client))
+        raw_task    = asyncio.create_task(fetch_all(client, tw_idx))
+        flight_msgs, raw = await asyncio.gather(flight_task, raw_task)
+        log.info(f"📥 {len(raw)} آیتم خام  ✈️ {len(flight_msgs)} تحرک هوایی")
 
         # ── پردازش — سه لایه dedup
         collected = []
@@ -1314,7 +1545,7 @@ async def main():
             if eid in seen:
                 cnt_url += 1; continue
 
-            # لایه ۲: تازگی (cutoff بلادرنگ)
+            # لایه ۲: تازگی
             if not is_fresh(entry, cutoff):
                 seen.add(eid); cnt_old += 1; continue
 
@@ -1322,12 +1553,12 @@ async def main():
             s    = clean_html(entry.get("summary") or entry.get("description") or "")
             full = f"{t} {s}"
 
-            # فیلتر موضوعی
+            # لایه ۳: war relevance
             if not is_war_relevant(full, is_embassy=is_emb,
-                                   is_tg=(src_type == "tg"), is_tw=(src_type == "tw")):
+                                   is_tg=(src_type=="tg"), is_tw=(src_type=="tw")):
                 seen.add(eid); cnt_irrel += 1; continue
 
-            # لایه ۳: story dedup (entity triple + stemmed jaccard)
+            # لایه ۴: story dedup
             if is_story_dup(t, stories):
                 seen.add(eid); cnt_story += 1; continue
 
@@ -1336,28 +1567,27 @@ async def main():
 
         log.info(
             f"📊 قدیمی:{cnt_old}  نامرتبط:{cnt_irrel}  "
-            f"url-dup:{cnt_url}  story-dup:{cnt_story}  ✅ {len(collected)} خبر جنگی"
+            f"url-dup:{cnt_url}  story-dup:{cnt_story}  ✅ {len(collected)} خبر"
         )
 
-        # قدیمی‌ترین اول — حداکثر MAX_NEW_PER_RUN
+        # قدیمی‌ترین اول، حداکثر MAX_NEW_PER_RUN
         collected = list(reversed(collected))
         if len(collected) > MAX_NEW_PER_RUN:
-            log.warning(f"⚠️ {len(collected)} → {MAX_NEW_PER_RUN}")
             collected = collected[-MAX_NEW_PER_RUN:]
 
-        # ── ارسال تحرکات هوایی (اولویت بالا)
+        # ── ارسال تحرکات هوایی (اولویت)
         for msg in flight_msgs[:3]:
             await tg_send_text(client, msg)
-            await asyncio.sleep(SEND_DELAY)
+            await asyncio.sleep(0.5)
 
         if not collected:
             log.info("💤 خبر جنگی جدیدی نیست")
-            save_seen(seen); save_stories(stories); save_last_run(); return
+            save_seen(seen); save_stories(stories); save_last_run(next_tw_idx); return
 
         # ── ترجمه Gemini
         arts_in = [
-            (trim(clean_html(e.get("title", "")), 280),
-             trim(clean_html(e.get("summary") or e.get("description") or ""), 350))
+            (trim(clean_html(e.get("title", "")), MAX_TITLE_LEN),
+             trim(clean_html(e.get("summary") or e.get("description") or ""), MAX_ARTICLE_LEN))
             for _, e, _, _, _ in collected
         ]
         if GEMINI_API_KEY:
@@ -1372,43 +1602,61 @@ async def main():
             fa, _    = translations[i]
             en_title = arts_in[i][0]
             en_body  = arts_in[i][1]
+            link     = entry.get("link", "")
             dt_str   = format_dt(entry)
             display  = fa if (fa and fa != en_title and len(fa) > 5) else en_title
             urgent   = any(w in (fa + en_title).lower() for w in
-                           ["attack", "strike", "airstrike", "killed", "bomb",
-                            "حمله", "کشته", "انفجار", "موشک", "بمباران"])
+                           ["attack","strike","airstrike","killed","bomb","explosion",
+                            "حمله","کشته","انفجار","موشک","بمباران","شهید"])
 
-            # تحلیل احساسات
+            # تحلیل احساسات + اهمیت
             sentiment_icons = analyze_sentiment(f"{fa} {en_title} {en_body}")
-            s_bar = sentiment_bar(sentiment_icons)
+            s_bar      = sentiment_bar(sentiment_icons)
+            importance = calc_importance(en_title, en_body, sentiment_icons, stype)
+            src_icon   = "🏛️" if is_emb else ("𝕏" if stype=="tw" else ("📢" if stype=="tg" else "📡"))
+            card_sent  = False
 
-            src_icon  = "🏛️" if is_emb else ("𝕏" if stype == "tw" else ("📢" if stype == "tg" else "📡"))
-            card_sent = False
+            log.info(f"  → [{stype}] imp={importance} {en_title[:55]}")
 
             if PIL_OK:
-                buf = make_news_card(en_title, fa if fa != en_title else "",
-                                     src_name, dt_str, "", urgent, sentiment_icons)
+                # خبر خیلی مهم (importance ≥ 7): کارت غنی + article fetch
+                if importance >= RICH_CARD_THRESHOLD and link:
+                    log.info(f"    📰 واکشی مقاله برای کارت غنی...")
+                    article_body = await fetch_article_text(client, link)
+                    buf = make_rich_card(en_title, display, article_body,
+                                        src_name, dt_str, urgent, sentiment_icons)
+                else:
+                    article_body = ""
+                    buf = make_news_card(en_title, fa if fa != en_title else "",
+                                        src_name, dt_str, "", urgent, sentiment_icons)
                 if buf:
-                    cap = f"{s_bar}\n\n<b>{esc(display)}</b>\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
+                    # caption با متن کامل ترجمه
+                    cap = f"{s_bar}\n\n<b>{esc(display)}</b>"
+                    if importance >= RICH_CARD_THRESHOLD:
+                        cap += f"\n\n<i>{esc(trim(en_body,300))}</i>"
+                    cap += f"\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
                     if await tg_send_photo(client, buf, cap):
                         card_sent = True
 
             if not card_sent:
-                parts = [s_bar, f"<b>{esc(display)}</b>", "",
-                         f"─── {src_icon} <b>{esc(src_name)}</b>"]
+                # متن با محتوای کامل
+                parts = [s_bar, f"<b>{esc(display)}</b>"]
+                if en_body and len(en_body) > 30:
+                    parts += ["", f"<i>{esc(trim(en_body, 500))}</i>"]
+                parts += ["", f"─── {src_icon} <b>{esc(src_name)}</b>"]
                 if dt_str: parts.append(dt_str)
                 if await tg_send_text(client, "\n".join(parts)):
                     card_sent = True
 
             if card_sent:
                 seen.add(eid); sent += 1
-                log.info(f"  ✅ [{stype}] {display[:60]}")
+                log.info(f"    ✅ ارسال شد")
             await asyncio.sleep(SEND_DELAY)
 
         save_seen(seen)
         save_stories(stories)
-        save_last_run()
-        log.info(f"🏁 {sent}/{len(collected)} خبر + {len(flight_msgs)} تحرک هوایی ارسال شد")
+        save_last_run(next_tw_idx)
+        log.info(f"🏁 {sent}/{len(collected)} خبر | 𝕏 next={next_tw_idx}")
 
 
 
