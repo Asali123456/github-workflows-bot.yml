@@ -30,6 +30,7 @@ log = logging.getLogger("WarBot")
 BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID     = os.environ.get("CHANNEL_ID", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+ADMIN_CHAT_ID  = os.environ.get("ADMIN_CHAT_ID", "")
 
 SEEN_FILE         = "seen.json"
 STORIES_FILE      = "stories.json"
@@ -40,8 +41,8 @@ NITTER_CACHE_FILE = "nitter_cache.json"
 
 # ── زمان‌بندی ─────────────────────────────────────────────────────────────
 # هر اجرا فقط اخبار تازه بعد از اجرای قبلی را می‌بیند
-CUTOFF_BUFFER_MIN  = 2    # buffer برای جلوگیری از miss (کوچک‌تر = سریع‌تر)
-MAX_LOOKBACK_MIN   = 12   # حداکثر برگشت — کمی بیشتر از cron interval (10min)
+CUTOFF_BUFFER_MIN  = 3    # buffer برای جلوگیری از miss
+MAX_LOOKBACK_MIN   = 15   # حداکثر برگشت — متناسب با cron 10min
 SEEN_TTL_HOURS     = 6
 NITTER_CACHE_TTL   = 900
 
@@ -69,7 +70,6 @@ IRAN_FEEDS = [
     {"n":"🇮🇷 ISNA English",        "u":"https://en.isna.ir/rss"},
     {"n":"🇮🇷 Tehran Times",        "u":"https://www.tehrantimes.com/rss"},
     {"n":"🇮🇷 Iran International", "u":"https://www.iranintl.com/en/rss"},
-    {"n":"🇮🇷 Radio Farda",         "u":"https://www.radiofarda.com/api/zoyqvpemr"},
     {"n":"🇮🇷 Iran Wire EN",        "u":"https://iranwire.com/en/feed/"},
     {"n":"🇮🇷 خبرگزاری تسنیم",      "u":"https://www.tasnimnews.com/fa/rss/feed/0/8/0"},
     {"n":"🇮🇷 خبرگزاری مهر",         "u":"https://www.mehrnews.com/rss"},
@@ -77,55 +77,48 @@ IRAN_FEEDS = [
     {"n":"🇮🇷 خبرگزاری فارس",        "u":"https://www.farsnews.ir/rss/fa"},
     {"n":"🇮🇷 مشرق نیوز",             "u":"https://www.mashreghnews.ir/rss"},
     {"n":"🇮🇷 دفاع پرس",             "u":"https://www.defapress.ir/fa/rss"},
-    {"n":"🇮🇷 سپاه نیوز",             "u":"https://www.sepahnews.com/rss"},
-    {"n":"🇮🇷 GNews IRGC EN",        "u":"https://news.google.com/rss/search?q=IRGC+Iran+Israel+attack+war&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇮🇷 GNews جنگ ایران",      "u":"https://news.google.com/rss/search?q=ایران+اسراییل+جنگ+حمله&hl=fa&gl=IR&ceid=IR:fa&num=15"},
-    {"n":"🇮🇷 GNews سپاه موشک",      "u":"https://news.google.com/rss/search?q=سپاه+موشک+حمله+اسراییل&hl=fa&gl=IR&ceid=IR:fa&num=15"},
-    {"n":"🇮🇷 GNews خامنه‌ای",        "u":"https://news.google.com/rss/search?q=خامنه‌ای+بیانیه+جنگ&hl=fa&gl=IR&ceid=IR:fa&num=10"},
+    # Google News — جست‌وجوهای دقیق فعلی (فوریه ۲۰۲۶)
+    {"n":"🇮🇷 GNews Iran War",      "u":"https://news.google.com/rss/search?q=Iran+war+attack+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"🇮🇷 GNews IRGC",          "u":"https://news.google.com/rss/search?q=IRGC+Iran+Israel+US+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"🇮🇷 GNews ایران حمله",     "u":"https://news.google.com/rss/search?q=ایران+حمله+موشک+اسراییل+آمریکا&hl=fa&gl=IR&ceid=IR:fa&num=15&tbs=qdr:d"},
+    {"n":"🇮🇷 GNews سپاه",          "u":"https://news.google.com/rss/search?q=سپاه+پاسداران+عملیات&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
 ]
 ISRAEL_FEEDS = [
     {"n":"🇮🇱 Jerusalem Post",       "u":"https://www.jpost.com/rss/rssfeedsheadlines.aspx"},
     {"n":"🇮🇱 Times of Israel",      "u":"https://www.timesofisrael.com/feed/"},
-    {"n":"🇮🇱 TOI Iran",             "u":"https://www.timesofisrael.com/topic/iran/feed/"},
     {"n":"🇮🇱 Israel Hayom EN",      "u":"https://www.israelhayom.com/feed/"},
     {"n":"🇮🇱 Arutz Sheva",          "u":"https://www.israelnationalnews.com/rss.aspx"},
     {"n":"🇮🇱 i24 News",             "u":"https://www.i24news.tv/en/rss"},
-    {"n":"🇮🇱 Israel Defense",       "u":"https://www.israeldefense.co.il/en/rss.xml"},
-    {"n":"🇮🇱 Netanyahu Iran GNews", "u":"https://news.google.com/rss/search?q=Netanyahu+Iran+attack+order+war&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇮🇱 IDF Iran GNews",       "u":"https://news.google.com/rss/search?q=IDF+operation+Iran+strike+missile&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇮🇱 Iron Dome GNews",      "u":"https://news.google.com/rss/search?q=Iron+Dome+Arrow+missile+intercept+Iran&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇮🇱 Mossad Iran GNews",    "u":"https://news.google.com/rss/search?q=Mossad+Iran+covert+operation&hl=en-US&gl=US&ceid=US:en&num=15"},
+    {"n":"🇮🇱 GNews Israel Iran",    "u":"https://news.google.com/rss/search?q=Israel+Iran+attack+strike&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"🇮🇱 GNews IDF",            "u":"https://news.google.com/rss/search?q=IDF+military+operation+Iran&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"🇮🇱 GNews Iron Dome",      "u":"https://news.google.com/rss/search?q=Iron+Dome+Arrow+missile+defense&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
 USA_FEEDS = [
-    {"n":"🇺🇸 AP Top News",          "u":"https://feeds.apnews.com/rss/apf-topnews"},
     {"n":"🇺🇸 AP World",             "u":"https://feeds.apnews.com/rss/apf-WorldNews"},
     {"n":"🇺🇸 Reuters World",        "u":"https://feeds.reuters.com/reuters/worldNews"},
     {"n":"🇺🇸 Reuters Middle East",  "u":"https://feeds.reuters.com/reuters/MEonlineHeadlines"},
     {"n":"🇺🇸 CNN Middle East",      "u":"http://rss.cnn.com/rss/edition_meast.rss"},
-    {"n":"🇺🇸 Pentagon DoD",         "u":"https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=10"},
     {"n":"🇺🇸 USNI News",            "u":"https://news.usni.org/feed"},
     {"n":"🇺🇸 Breaking Defense",     "u":"https://breakingdefense.com/feed/"},
     {"n":"🇺🇸 The War Zone",         "u":"https://www.twz.com/feed"},
-    {"n":"🇺🇸 Foreign Policy",       "u":"https://foreignpolicy.com/feed/"},
     {"n":"🇺🇸 Defense News",         "u":"https://www.defensenews.com/arc/outboundfeeds/rss/"},
     {"n":"🇺🇸 Military Times",       "u":"https://www.militarytimes.com/arc/outboundfeeds/rss/"},
-    {"n":"🇺🇸 US Strike Iran GNews", "u":"https://news.google.com/rss/search?q=United+States+strike+bomb+Iran+military&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇺🇸 US Navy Iran GNews",   "u":"https://news.google.com/rss/search?q=US+Navy+carrier+Iran+Persian+Gulf&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"🇺🇸 CENTCOM GNews",        "u":"https://news.google.com/rss/search?q=CENTCOM+Iran+Iraq+military+operation&hl=en-US&gl=US&ceid=US:en"},
-    {"n":"🔍 Long War Journal",      "u":"https://www.longwarjournal.org/feed"},
-    {"n":"⚠️ IAEA Iran GNews",       "u":"https://news.google.com/rss/search?q=IAEA+Iran+nuclear+uranium&hl=en-US&gl=US&ceid=US:en&num=15"},
-    {"n":"⚠️ Red Sea Houthi GNews",  "u":"https://news.google.com/rss/search?q=Houthi+Iran+Red+Sea+attack+US&hl=en-US&gl=US&ceid=US:en&num=15"},
+    {"n":"🇺🇸 Long War Journal",     "u":"https://www.longwarjournal.org/feed"},
+    {"n":"🇺🇸 GNews US Iran",        "u":"https://news.google.com/rss/search?q=US+military+Iran+strike+sanction&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"🇺🇸 GNews CENTCOM",        "u":"https://news.google.com/rss/search?q=CENTCOM+Middle+East+military+operation&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"🇺🇸 GNews Houthi",         "u":"https://news.google.com/rss/search?q=Houthi+Iran+Red+Sea+US+Navy&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"⚠️ GNews Nuclear",         "u":"https://news.google.com/rss/search?q=Iran+nuclear+uranium+IAEA+enrichment&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
 EMBASSY_FEEDS = [
-    {"n":"🏛️ US Virtual Embassy",   "u":"https://ir.usembassy.gov/feed/"},
     {"n":"🏛️ US State Travel",      "u":"https://travel.state.gov/content/travel/en/traveladvisories/traveladvisories.html.rss"},
     {"n":"🏛️ UK FCDO Iran",         "u":"https://www.gov.uk/foreign-travel-advice/iran.atom"},
-    {"n":"🏛️ Embassy Evacuations",  "u":"https://news.google.com/rss/search?q=embassy+evacuation+Iran+Tehran+warning&hl=en-US&gl=US&ceid=US:en&num=10"},
+    {"n":"🏛️ Embassy Evacuation",   "u":"https://news.google.com/rss/search?q=embassy+evacuation+Iran+warning+2026&hl=en-US&gl=US&ceid=US:en&num=10"},
 ]
 INTL_FEEDS = [
     {"n":"🌐 BBC Middle East",  "u":"https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"},
     {"n":"🌐 Al Jazeera",       "u":"https://www.aljazeera.com/xml/rss/all.xml"},
     {"n":"🌐 Middle East Eye",  "u":"https://www.middleeasteye.net/rss"},
+    {"n":"🌐 Foreign Policy",   "u":"https://foreignpolicy.com/feed/"},
 ]
 
 ALL_RSS_FEEDS = IRAN_FEEDS + ISRAEL_FEEDS + USA_FEEDS + EMBASSY_FEEDS + INTL_FEEDS
@@ -231,7 +224,10 @@ IRAN_KW = [
 USA_KW = [
     "united states","us military","pentagon","centcom","white house","biden","trump",
     "us navy","us air force","us army","cia","state department","secretary of state",
-    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا",
+    "u.s.","u.s. navy","u.s. military","u.s. forces","american forces","american military",
+    "american troops","carrier strike","uss ", "rubio","austin","hegseth","blinken",
+    "american carrier","us carrier","us warship","us troops","us forces","us base",
+    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
 ]
 ISRAEL_KW = [
     "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
@@ -274,32 +270,40 @@ def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
     return has_iran or has_usa or has_israel or has_proxy
 
 # ══════════════════════════════════════════════════════════════════════════
-# Twitter/X — Nitter + RSSHub
+# Twitter/X — Nitter (Feb 2026 verified instances)
 # ══════════════════════════════════════════════════════════════════════════
-# Nitter instances — معتبرترین در ۲۰۲۶
-# xcancel.com بیشترین uptime دارد
+# ترتیب بر اساس uptime از GitHub Actions (تست شده فوریه ۲۰۲۶)
 NITTER_INSTANCES = [
-    "https://xcancel.com",
-    "https://nitter.poast.org",
-    "https://nitter.privacyredirect.com",
-    "https://lightbrd.com",
-    "https://nitter.tiekoetter.com",
-    "https://nitter.space",
-    "https://n.ramle.be",
-    "https://nitter.catsarch.com",
+    "https://xcancel.com",                    # ✅ آدرس اصلی — ریدایرکت به rss.xcancel.com
+    "https://rss.xcancel.com",                # ✅ subdomain مستقیم
+    "https://nitter.privacyredirect.com",     # ✅ اغلب کار می‌کند
+    "https://nitter.tiekoetter.com",          # ✅ stable
+    "https://nitter.poast.org",               # فعال
+    "https://nitter.catsarch.com",            # فعال
+    "https://lightbrd.com",                   # فعال
+    "https://n.ramle.be",                     # backup
+    "https://nitter.space",                   # backup
+    "https://nitter.net",                     # backup
 ]
-# RSSHub instances — fallback
 RSSHUB_INSTANCES = [
+    "https://rsshub.app",
     "https://rsshub.rss.now.sh",
     "https://rss.shab.fun",
     "https://rsshub.moeyy.xyz",
+    "https://rsshub.ktachibana.party",
+    "https://rsshub-instance.zeabur.app",
+    "https://rss.fatpandac.com",
+    "https://rsshub.pseudoyu.com",
+    "https://rsshub.mubibai.com",
+    "https://rsshub.atgw.io",
 ]
 
 NITTER_HDR = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
     "Accept": "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
 }
 COMMON_UA = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
@@ -324,52 +328,88 @@ def _save_nitter_cache(nitter, rsshub):
               open(NITTER_CACHE_FILE, "w"))
 
 def _is_rss(body: str, ct: str) -> bool:
-    return ("xml" in ct) or ("<rss" in body[:400]) or body.lstrip()[:6].startswith("<?xml")
+    b = body[:600].lower()
+    return ("xml" in ct) or ("<rss" in b) or ("<?xml" in b) or ("<feed" in b)
 
 async def _try_rss(client: httpx.AsyncClient, url: str, timeout: float = TW_TIMEOUT) -> list:
-    """GET یک URL RSS — خروجی: list از entries یا []"""
+    """
+    RSS URL را fetch کرده entries برمی‌گرداند.
+    follow_redirects=True مهم است (xcancel.com → rss.xcancel.com)
+    """
     try:
-        r = await client.get(url, headers=NITTER_HDR,
-                             timeout=httpx.Timeout(connect=3.0, read=timeout,
-                                                   write=3.0, pool=3.0))
-        if r.status_code != 200: return []
-        if not _is_rss(r.text, r.headers.get("content-type", "")): return []
-        entries = feedparser.parse(r.text).entries
-        return [e for e in entries if len(e.get("title", "").strip()) > 5]
-    except: return []
+        r = await client.get(url,
+                             headers=NITTER_HDR,
+                             follow_redirects=True,
+                             timeout=httpx.Timeout(connect=5.0, read=timeout,
+                                                   write=5.0, pool=5.0))
+        if r.status_code not in (200, 304):
+            return []
+        ct = r.headers.get("content-type", "")
+        body = r.text or ""
+        if not _is_rss(body, ct):
+            return []
+        parsed = feedparser.parse(body)
+        entries = getattr(parsed, "entries", []) or []
+        return [e for e in entries if len((e.get("title") or "").strip()) > 3]
+    except Exception:
+        return []
 
-async def _probe_nitter(client: httpx.AsyncClient, inst: str) -> tuple | None:
+async def _probe_instance(client: httpx.AsyncClient, url: str,
+                          handle: str = "OSINTdefender") -> tuple | None:
+    """
+    بررسی اینکه یک instance واقعاً RSS برمی‌گرداند.
+    مهم: فقط ساختار RSS را چک می‌کند، نه تعداد entries.
+    """
     t0 = asyncio.get_running_loop().time()
-    e  = await _try_rss(client, f"{inst}/CENTCOM/rss", timeout=4.0)
-    if e:
-        return inst, (asyncio.get_running_loop().time() - t0) * 1000
+    try:
+        r = await client.get(f"{url}/{handle}/rss",
+                             headers=NITTER_HDR,
+                             follow_redirects=True,
+                             timeout=httpx.Timeout(connect=5.0, read=7.0,
+                                                   write=5.0, pool=5.0))
+        if r.status_code not in (200, 304):
+            return None
+        ct   = r.headers.get("content-type", "")
+        body = r.text or ""
+        # فقط چک ساختار — نه entries
+        if _is_rss(body, ct):
+            ms = (asyncio.get_running_loop().time() - t0) * 1000
+            return url, ms
+    except Exception:
+        pass
     return None
 
 async def _probe_rsshub(client: httpx.AsyncClient, inst: str) -> tuple | None:
     t0 = asyncio.get_running_loop().time()
-    e  = await _try_rss(client, f"{inst}/twitter/user/CENTCOM", timeout=5.0)
-    if e:
-        return inst, (asyncio.get_running_loop().time() - t0) * 1000
+    try:
+        r = await client.get(f"{inst}/twitter/user/OSINTdefender",
+                             headers=NITTER_HDR,
+                             follow_redirects=True,
+                             timeout=httpx.Timeout(connect=5.0, read=8.0,
+                                                   write=5.0, pool=5.0))
+        if r.status_code in (200, 304) and _is_rss(r.text or "", r.headers.get("content-type","")):
+            ms = (asyncio.get_running_loop().time() - t0) * 1000
+            return inst, ms
+    except Exception:
+        pass
     return None
 
 async def build_twitter_pools(client: httpx.AsyncClient):
-    """
-    Probe Nitter + RSSHub موازی — نتیجه در کش ۱۵ دقیقه‌ای
-    """
+    """Probe موازی — نتایج در cache ذخیره می‌شوند"""
     global _nitter_pool, _rsshub_pool
     if _nitter_pool or _rsshub_pool:
         return
 
     cached_n, cached_r, ts = _load_nitter_cache()
     age = datetime.now(timezone.utc).timestamp() - ts
-    if age < NITTER_CACHE_TTL and (cached_n or cached_r):
+    if age < NITTER_CACHE_TTL and cached_n:
         _nitter_pool = cached_n
         _rsshub_pool = cached_r
-        log.info(f"𝕏 pool از cache: Nitter={len(_nitter_pool)} RSSHub={len(_rsshub_pool)}")
+        log.info(f"𝕏 cache: Nitter={len(_nitter_pool)} RSSHub={len(_rsshub_pool)}")
         return
 
     log.info(f"𝕏 Probing {len(NITTER_INSTANCES)} Nitter + {len(RSSHUB_INSTANCES)} RSSHub...")
-    sema = asyncio.Semaphore(8)
+    sema = asyncio.Semaphore(10)
     async def sp(coro):
         async with sema:
             try: return await coro
@@ -377,53 +417,57 @@ async def build_twitter_pools(client: httpx.AsyncClient):
 
     n = len(NITTER_INSTANCES)
     results = await asyncio.gather(
-        *[sp(_probe_nitter(client, u)) for u in NITTER_INSTANCES],
-        *[sp(_probe_rsshub(client, u)) for u in RSSHUB_INSTANCES],
+        *[sp(_probe_instance(client, u)) for u in NITTER_INSTANCES],
+        *[sp(_probe_rsshub(client, u))  for u in RSSHUB_INSTANCES],
     )
-    nok = sorted([r for r in results[:n] if r], key=lambda x: x[1])
-    rok = sorted([r for r in results[n:] if r], key=lambda x: x[1])
+    nok = sorted([r for r in results[:n]  if r], key=lambda x: x[1])
+    rok = sorted([r for r in results[n:]  if r], key=lambda x: x[1])
 
-    _nitter_pool = [u for u, _ in nok]  or NITTER_INSTANCES[:3]
+    # اگه probe همه fail کردند → از کل لیست استفاده کن (ممکن است GitHub IP block نباشد)
+    _nitter_pool = [u for u, _ in nok] or list(NITTER_INSTANCES)
     _rsshub_pool = [u for u, _ in rok]
 
-    if nok: log.info(f"  Nitter best: {nok[0][0].split('//')[-1]} ({nok[0][1]:.0f}ms)")
-    if rok: log.info(f"  RSSHub best: {rok[0][0].split('//')[-1]} ({rok[0][1]:.0f}ms)")
-    log.info(f"𝕏 Nitter:{len(_nitter_pool)} RSSHub:{len(_rsshub_pool)}")
+    log.info(f"𝕏 Nitter کار می‌کند: {len([r for r in results[:n] if r])}/{n}")
+    if nok:
+        log.info(f"  بهترین: {nok[0][0].split('//')[-1]} ({nok[0][1]:.0f}ms)")
     _save_nitter_cache(_nitter_pool, _rsshub_pool)
 
 async def fetch_twitter(client: httpx.AsyncClient, label: str, handle: str) -> list:
     """
-    دریافت توییت‌های یک handle — سه مرحله:
-    1. Nitter (سریع‌ترین instance از probe)
-    2. RSSHub
-    3. xcancel.com مستقیم
-    semaphore کلی جلوگیری از flood به instances
+    دریافت توییت‌ها — v19: اولویت RSSHub (پایدارتر از Nitter در 2026)
+    1. RSSHub (بهترین نرخ موفقیت — ۱۰ instance)
+    2. xcancel.com / rss.xcancel.com
+    3. سایر Nitter instances از pool
     """
-    sema = _TW_SEMA or asyncio.Semaphore(20)
+    sema = _TW_SEMA or asyncio.Semaphore(15)
     async with sema:
-        # مرحله ۱: Nitter
+        # ── مرحله ۱: RSSHub — بالاترین نرخ موفقیت ────────────────
+        for inst in (_rsshub_pool or RSSHUB_INSTANCES):
+            e = await _try_rss(client, f"{inst}/twitter/user/{handle}", timeout=8.0)
+            if e:
+                log.debug(f"𝕏 {handle} ← RSSHub/{inst.split('//')[-1]} ({len(e)})")
+                return [(x, f"𝕏 {label}", "tw", False) for x in e]
+
+        # ── مرحله ۲: xcancel (دو URL) ────────────────────────────
+        tried = set()
+        for base in ("https://xcancel.com", "https://rss.xcancel.com"):
+            u = f"{base}/{handle}/rss"
+            tried.add(base)
+            e = await _try_rss(client, u)
+            if e:
+                log.debug(f"𝕏 {handle} ← {base.split('//')[-1]} ({len(e)})")
+                return [(x, f"𝕏 {label}", "tw", False) for x in e]
+
+        # ── مرحله ۳: سایر Nitter instances ───────────────────────
         pool = _nitter_pool or NITTER_INSTANCES
-        start = abs(hash(handle)) % len(pool)
-        for inst in (pool * 2)[start: start + min(3, len(pool))]:
+        for inst in pool:
+            if inst in tried: continue
             e = await _try_rss(client, f"{inst}/{handle}/rss")
             if e:
-                log.debug(f"𝕏 {handle} ← Nitter/{inst.split('//')[-1]}")
+                log.debug(f"𝕏 {handle} ← {inst.split('//')[-1]} ({len(e)})")
                 return [(x, f"𝕏 {label}", "tw", False) for x in e]
 
-        # مرحله ۲: RSSHub
-        for inst in (_rsshub_pool or RSSHUB_INSTANCES[:1]):
-            e = await _try_rss(client, f"{inst}/twitter/user/{handle}")
-            if e:
-                log.debug(f"𝕏 {handle} ← RSSHub/{inst.split('//')[-1]}")
-                return [(x, f"𝕏 {label}", "tw", False) for x in e]
-
-        # مرحله ۳: xcancel.com مستقیم
-        e = await _try_rss(client, f"https://xcancel.com/{handle}/rss")
-        if e:
-            log.debug(f"𝕏 {handle} ← xcancel direct")
-            return [(x, f"𝕏 {label}", "tw", False) for x in e]
-
-    log.debug(f"𝕏 {handle}: همه روش‌ها fail")
+    log.debug(f"𝕏 {handle}: همه fail")
     return []
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -867,858 +911,4 @@ async def fetch_telegram_channel(client: httpx.AsyncClient, label: str,
             dt_str   = time_el.get("datetime", "") if time_el else ""
             entry_dt = None
             if dt_str:
-                try: entry_dt = datetime.fromisoformat(dt_str.replace("Z","+00:00"))
-                except: pass
-            # فقط پیام‌های تازه‌تر از cutoff
-            if entry_dt and entry_dt < cutoff: continue
-            link_el = msg.select_one("a.tgme_widget_message_date")
-            link    = link_el.get("href","") if link_el else f"https://t.me/{handle}"
-            results.append(({
-                "title":   text[:300],
-                "summary": text[:800],
-                "link":    link,
-                "_tg_dt":  entry_dt,
-            }, label, "tg", False))
-        return results
-    except Exception as e:
-        log.debug(f"TG {handle}: {e}"); return []
-
-async def fetch_all(client: httpx.AsyncClient, cutoff: datetime) -> list:
-    """
-    واکشی موازی همه منابع
-    cutoff برای Telegram پاس داده می‌شه (RSS از is_fresh در main فیلتر می‌شه)
-    """
-    await build_twitter_pools(client)
-
-    rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
-    tg_t  = [fetch_telegram_channel(client, l, h, cutoff) for l, h in TELEGRAM_CHANNELS]
-    tw_t  = [fetch_twitter(client, l, h) for l, h in TWITTER_HANDLES]
-
-    all_res = await asyncio.gather(*rss_t, *tg_t, *tw_t, return_exceptions=True)
-
-    out = []; rss_ok = tg_ok = tw_ok = 0
-    n_rss = len(ALL_RSS_FEEDS); n_tg = len(TELEGRAM_CHANNELS)
-    for i, res in enumerate(all_res):
-        if not isinstance(res, list): continue
-        out.extend(res)
-        if   i < n_rss:          rss_ok += bool(res)
-        elif i < n_rss + n_tg:   tg_ok  += bool(res)
-        else:                     tw_ok  += bool(res)
-
-    log.info(f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)} "
-             f" 📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)} "
-             f" 𝕏:{tw_ok}/{len(TWITTER_HANDLES)}")
-    return out
-
-# ══════════════════════════════════════════════════════════════════════════
-# ابزار متن
-# ══════════════════════════════════════════════════════════════════════════
-def clean_html(t): return re.sub(r"<[^>]+>", " ", t or "").strip()
-def trim(t, n):
-    t = t.strip()
-    return t if len(t) <= n else t[:n-1] + "…"
-def make_id(entry):
-    k = entry.get("link") or entry.get("id") or entry.get("title") or ""
-    return hashlib.md5(k.encode()).hexdigest()
-def esc(t):
-    return re.sub(r"([<>&])", lambda m: {"<":"&lt;",">":"&gt;","&":"&amp;"}[m.group()], t)
-
-def format_dt(entry) -> str:
-    try:
-        t = entry.get("published_parsed") or entry.get("updated_parsed")
-        if t:
-            dt = datetime(*t[:6], tzinfo=timezone.utc).astimezone(TEHRAN_TZ)
-            return dt.strftime("%H:%M تهران")
-        tg_dt = entry.get("_tg_dt")
-        if tg_dt:
-            return tg_dt.astimezone(TEHRAN_TZ).strftime("%H:%M تهران")
-    except: pass
-    return ""
-
-def is_fresh(entry, cutoff: datetime) -> bool:
-    try:
-        t = entry.get("published_parsed") or entry.get("updated_parsed")
-        if t: return datetime(*t[:6], tzinfo=timezone.utc) >= cutoff
-        tg_dt = entry.get("_tg_dt")
-        if tg_dt: return tg_dt >= cutoff
-        return True  # بدون timestamp → پاس بده (seen.json فیلتر می‌کنه)
-    except: return True
-
-# ══════════════════════════════════════════════════════════════════════════
-# Dedup
-# ══════════════════════════════════════════════════════════════════════════
-_VIOLENCE_CODES  = {"MSL","AIR","ATK","KIA","DEF","EXP"}
-_POLITICAL_CODES = {"THR","DIP","SAN","NUC","SPY","STM"}
-
-def _stem(word):
-    w = word.lower()
-    for suf in ("ing","ed","tion","ment","er","ها","های","\u200cها"):
-        if w.endswith(suf) and len(w) > len(suf)+3: return w[:-len(suf)]
-    return w
-
-def _bag(text):
-    return {_stem(w) for w in re.findall(r"[\w\u0600-\u06FF]{3,}", text.lower())}
-
-def _entity_triple(title):
-    txt = title.lower()
-    actors = (
-        ["iran","irgc","khamenei","سپاه","ایران"],
-        ["israel","idf","netanyahu","اسراییل"],
-        ["us ","usa","centcom","pentagon","آمریکا"],
-        ["hamas","حماس"], ["hezbollah","حزب‌الله"], ["houthi","حوثی"],
-    )
-    action_cats = {
-        "MSL": ["missile","rocket","ballistic","موشک","پهپاد"],
-        "AIR": ["airstrike","bombing","بمباران"],
-        "ATK": ["attack","strike","حمله"],
-        "KIA": ["killed","dead","casualties","کشته","شهید"],
-        "DEF": ["intercept","iron dome","رهگیری"],
-        "EXP": ["explosion","blast","انفجار"],
-        "THR": ["threat","warn","تهدید"],
-        "SAN": ["sanction","تحریم"],
-        "NUC": ["nuclear","uranium","هسته‌ای"],
-    }
-    actor1, actor2, act = "", "", ""
-    for i, grp in enumerate(actors):
-        if any(a in txt for a in grp):
-            if not actor1: actor1 = str(i)
-            elif not actor2: actor2 = str(i)
-    for code, kws in action_cats.items():
-        if any(k in txt for k in kws): act = code; break
-    return actor1, actor2, act
-
-def is_story_dup(title: str, stories: list) -> bool:
-    bag1 = _bag(title)
-    if not bag1: return False
-    a1, a2, act1 = _entity_triple(title)
-    for item in stories:
-        if not (isinstance(item, (list, tuple)) and len(item) == 3):
-            continue
-        _, prev_bag_raw, prev_triple = item
-        prev_bag = set(prev_bag_raw) if isinstance(prev_bag_raw, list) else prev_bag_raw
-        pa, pb, pact = prev_triple
-        if act1 and pact and act1 in _VIOLENCE_CODES and pact in _VIOLENCE_CODES:
-            if a1 == pa and a2 == pb: return True
-        if act1 and pact and act1 in _POLITICAL_CODES and pact in _POLITICAL_CODES:
-            if a1 == pa: return True
-        union = bag1 | prev_bag
-        if union and len(bag1 & prev_bag) / len(union) >= JACCARD_THRESHOLD:
-            return True
-    return False
-
-def register_story(title: str, stories: list) -> list:
-    stories.append([title, list(_bag(title)), list(_entity_triple(title))])
-    return stories[-MAX_STORIES:]
-
-# ══════════════════════════════════════════════════════════════════════════
-# seen.json — با TTL — فقط ارسال‌شده‌ها
-# ══════════════════════════════════════════════════════════════════════════
-def load_seen() -> set:
-    cutoff_ts = datetime.now(timezone.utc).timestamp() - SEEN_TTL_HOURS * 3600
-    try:
-        if Path(SEEN_FILE).exists():
-            raw = json.load(open(SEEN_FILE))
-            if isinstance(raw, dict):
-                return {k for k, v in raw.items() if v > cutoff_ts}
-            elif isinstance(raw, list):
-                # migrate از فرمت قدیم — فقط ۵۰۰ تا آخر
-                return set(raw[-500:])
-    except: pass
-    return set()
-
-def save_seen(seen: set):
-    now_ts    = datetime.now(timezone.utc).timestamp()
-    cutoff_ts = now_ts - SEEN_TTL_HOURS * 3600
-    try:
-        existing = {}
-        if Path(SEEN_FILE).exists():
-            raw = json.load(open(SEEN_FILE))
-            if isinstance(raw, dict):
-                existing = {k: v for k, v in raw.items() if v > cutoff_ts}
-    except: existing = {}
-    for eid in seen:
-        if eid not in existing: existing[eid] = now_ts
-    if len(existing) > 5000:
-        existing = dict(sorted(existing.items(), key=lambda x: x[1], reverse=True)[:5000])
-    json.dump(existing, open(SEEN_FILE, "w"))
-
-# ══════════════════════════════════════════════════════════════════════════
-# run_state — last_run برای cutoff هوشمند
-# ══════════════════════════════════════════════════════════════════════════
-def load_run_state() -> datetime:
-    """آخرین زمان اجرا — برای محاسبه cutoff"""
-    try:
-        if Path(RUN_STATE_FILE).exists():
-            d   = json.load(open(RUN_STATE_FILE))
-            ts  = d.get("last_run", 0)
-            if ts:
-                return datetime.fromtimestamp(ts, tz=timezone.utc)
-    except: pass
-    # اولین اجرا: MAX_LOOKBACK_MIN به عقب
-    return datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN)
-
-def save_run_state():
-    existing = {}
-    try:
-        if Path(RUN_STATE_FILE).exists():
-            existing = json.load(open(RUN_STATE_FILE))
-    except: pass
-    existing["last_run"] = datetime.now(timezone.utc).timestamp()
-    json.dump(existing, open(RUN_STATE_FILE, "w"))
-
-def load_stories() -> list:
-    try:
-        if Path(STORIES_FILE).exists():
-            raw = json.load(open(STORIES_FILE))
-            # migrate فرمت قدیم (2-tuple) به جدید (3-tuple)
-            result = []
-            for item in raw:
-                if isinstance(item, (list, tuple)) and len(item) == 2:
-                    title = item[0]
-                    result.append([title, list(_bag(title)), list(_entity_triple(title))])
-                elif isinstance(item, (list, tuple)) and len(item) == 3:
-                    result.append(item)
-            return result
-    except: pass
-    return []
-
-def save_stories(stories):
-    json.dump(stories[-300:], open(STORIES_FILE, "w"))
-
-# ══════════════════════════════════════════════════════════════════════════
-# ترجمه — Gemini اول، MyMemory رایگان fallback
-# ══════════════════════════════════════════════════════════════════════════
-GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-]
-
-# تشخیص متن فارسی
-def _is_farsi(text: str) -> bool:
-    fa_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
-    return fa_chars / max(len(text), 1) > 0.3
-
-# ترجمه رایگان یک متن از انگلیسی به فارسی با MyMemory
-async def _translate_mymemory(client: httpx.AsyncClient, text: str) -> str:
-    """MyMemory API — رایگان، بدون کلید، تا ۵۰۰۰ کاراکتر در روز"""
-    if not text or _is_farsi(text):
-        return text
-    try:
-        url = "https://api.mymemory.translated.net/get"
-        r = await client.get(url,
-            params={"q": text[:500], "langpair": "en|fa", "de": "warbot@github.com"},
-            timeout=httpx.Timeout(8.0))
-        if r.status_code == 200:
-            data = r.json()
-            tr = data.get("responseData", {}).get("translatedText", "")
-            # MyMemory گاهی MYMEMORY WARNING برمی‌گرداند
-            if tr and "MYMEMORY WARNING" not in tr and len(tr) > 5:
-                return tr
-    except Exception as e:
-        log.debug(f"MyMemory: {e}")
-    return text
-
-GEMINI_PROMPT = """تو یک خبرنگار جنگی حرفه‌ای هستی. این خبرهای نظامی را به فارسی ترجمه کن.
-
-دقیقاً این ساختار را رعایت کن:
-###ITEM_0###
-T: [عنوان فارسی در یک خط]
-B: [متن فارسی کامل]
-###ITEM_1###
-T: [عنوان فارسی]
-B: [متن فارسی]
-
-قوانین:
-- اسامی: Netanyahu=نتانیاهو، Khamenei=خامنه‌ای، IRGC=سپاه، IDF=ارتش اسراییل، CENTCOM=ستاد مرکزی آمریکا
-- اعداد، آمار، مکان‌ها را دقیق نگه‌دار
-- اگه خبر فارسیه: فقط پاکیزه‌سازی کن
-
-===خبرها===
-{items}"""
-
-async def _translate_gemini(client: httpx.AsyncClient, articles: list) -> list | None:
-    """ترجمه با Gemini — None اگه fail شد"""
-    if not GEMINI_API_KEY:
-        return None
-    items_txt = "".join(
-        f"###ITEM_{i}###\nEN_TITLE: {t[:300]}\nEN_BODY: {s[:400]}\n\n"
-        for i, (t, s) in enumerate(articles)
-    )
-    state = {}
-    try:
-        if Path(GEMINI_STATE_FILE).exists():
-            state = json.load(open(GEMINI_STATE_FILE))
-    except: pass
-    models = state.get("models_order", GEMINI_MODELS)
-    base   = "https://generativelanguage.googleapis.com/v1beta/models"
-
-    for model in models:
-        try:
-            r = await client.post(
-                f"{base}/{model}:generateContent?key={GEMINI_API_KEY}",
-                json={
-                    "contents": [{"parts": [{"text": GEMINI_PROMPT.format(items=items_txt)}]}],
-                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 8192}
-                },
-                timeout=httpx.Timeout(40.0)
-            )
-            if r.status_code == 429:
-                log.warning(f"Gemini {model}: rate-limit"); continue
-            if r.status_code != 200:
-                log.warning(f"Gemini {model}: HTTP {r.status_code} — {r.text[:200]}"); continue
-
-            text_out = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            log.info(f"🌐 Gemini {model} OK")
-
-            results = list(articles)
-            ok_count = 0
-            for i, (orig_t, orig_s) in enumerate(articles):
-                blk = re.search(rf"###ITEM_{i}###\s*(.*?)(?=###ITEM_\d+###|\Z)", text_out, re.DOTALL)
-                if not blk: continue
-                block   = blk.group(1)
-                t_match = re.search(r"^T:\s*(.+)$", block, re.MULTILINE)
-                b_match = re.search(r"^B:\s*([\s\S]+?)$", block, re.MULTILINE)
-                fa_t = t_match.group(1).strip() if t_match else ""
-                fa_b = b_match.group(1).strip() if b_match else ""
-                # fallback: همه block را عنوان بگیر
-                if not fa_t:
-                    fa_t = block.strip().split('\n')[0]
-                if len(fa_t) > 5:
-                    results[i] = (fa_t, fa_b or orig_s)
-                    ok_count += 1
-            log.info(f"🌐 ترجمه: {ok_count}/{len(articles)} خبر")
-            # مدل کارآمد را اول بگذار
-            state["models_order"] = [model] + [m for m in models if m != model]
-            json.dump(state, open(GEMINI_STATE_FILE, "w"))
-            return results
-        except Exception as e:
-            log.warning(f"Gemini {model}: {e}"); continue
-    return None
-
-async def translate_batch(client: httpx.AsyncClient, articles: list) -> list:
-    """
-    ترجمه با اولویت:
-    1. Gemini (اگه API key داریم)
-    2. MyMemory رایگان (فقط عنوان)
-    3. متن اصلی (بدون ترجمه)
-    """
-    if not articles:
-        return []
-
-    results = list(articles)
-
-    # ── مرحله ۱: Gemini ───────────────────────────────────────────────
-    if GEMINI_API_KEY:
-        log.info(f"🌐 Gemini: ترجمه {len(articles)} خبر...")
-        gemini_res = await _translate_gemini(client, articles)
-        if gemini_res:
-            return gemini_res
-        log.warning("🌐 Gemini fail — fallback به MyMemory")
-    else:
-        log.info("🌐 GEMINI_API_KEY تنظیم نشده — استفاده از MyMemory رایگان")
-
-    # ── مرحله ۲: MyMemory — عنوان را ترجمه می‌کند ───────────────────
-    log.info(f"🌐 MyMemory: ترجمه {len(articles)} عنوان...")
-    sema = asyncio.Semaphore(5)
-
-    async def _tr(orig_t, orig_s):
-        async with sema:
-            if _is_farsi(orig_t):
-                return (orig_t, orig_s)
-            fa_t = await _translate_mymemory(client, orig_t)
-            return (fa_t, orig_s)
-
-    translated = await asyncio.gather(*[_tr(t, s) for t, s in articles])
-    ok = sum(1 for i, (fa, _) in enumerate(translated) if fa != articles[i][0])
-    log.info(f"🌐 MyMemory: {ok}/{len(articles)} ترجمه شد")
-    return list(translated)
-
-# ══════════════════════════════════════════════════════════════════════════
-# Sentiment
-# ══════════════════════════════════════════════════════════════════════════
-BREAKING_KEYWORDS = [
-    "breaking","urgent","alert","just in","explosion","airstrike","killed","dead",
-    "war","attack","strike","nuclear","bomb","missile","invasion",
-    "حمله","کشته","انفجار","شهید","موشک","فوری","خبر فوری","اعلام جنگ",
-]
-IMPORTANCE_BOOST = {
-    "💀":4, "🔴":3, "💥":3, "🚀":3, "☢️":3,
-    "✈️":2, "🚢":2, "🛡️":2, "🕵️":2,
-    "🔥":1, "💰":1, "⚠️":1,
-}
-
-SENTIMENT_RULES = [
-    ("💀", ["killed","dead","casualties","fatalities","wounded","martyred","massacre"],
-           ["کشته","شهید","تلفات","کشتار","مجروح"]),
-    ("🔴", ["attack","struck","assault","launched attack","opened fire","bombed","targeted"],
-           ["حمله","ضربه","مورد هدف","حمله کرد"]),
-    ("💥", ["explosion","blast","detonation","explode","blew up"],
-           ["انفجار","منفجر","ترکید"]),
-    ("✈️", ["airstrike","air strike","air raid","warplane","f-35","f-15","b-52","f-16"],
-           ["حمله هوایی","بمباران","جنگنده"]),
-    ("🚀", ["missile","rocket","ballistic","cruise missile","drone strike","hypersonic"],
-           ["موشک","پهپاد","موشک بالستیک","راکت"]),
-    ("☢️", ["nuclear","uranium","enrichment","natanz","fordow","centrifuge","iaea"],
-           ["هسته‌ای","اورانیوم","غنی‌سازی","نطنز","فردو","سانتریفیوژ"]),
-    ("🚢", ["navy","naval","warship","aircraft carrier","strait of hormuz","red sea"],
-           ["نیروی دریایی","ناو","تنگه هرمز","دریای سرخ"]),
-    ("🕵️", ["intelligence","mossad","cia","spy","covert","assassination","sabotage","cyber"],
-           ["جاسوسی","موساد","خرابکاری","ترور","سایبری"]),
-    ("🛡️", ["intercept","shot down","iron dome","air defense","patriot"],
-           ["رهگیری","پدافند","گنبد آهنین","سرنگون"]),
-    ("🔥", ["escalat","tension","brink of war","retaliat","provocation"],
-           ["تشدید","تنش","تلافی","آستانه جنگ"]),
-    ("💰", ["sanction","embargo","swift","freeze assets"],
-           ["تحریم","محاصره اقتصادی"]),
-    ("⚠️", ["threat","warn","warning","ultimatum","red line","will respond"],
-           ["تهدید","هشدار","خط قرمز","اولتیماتوم"]),
-    ("🤝", ["negotiation","talks","deal","diplomacy","ceasefire","agreement"],
-           ["مذاکره","توافق","آتش‌بس","دیپلماسی"]),
-    ("📜", ["statement","declared","announced","press conference","spokesperson"],
-           ["بیانیه","اعلام","نشست خبری","سخنگو"]),
-]
-
-def analyze_sentiment(text: str) -> list:
-    txt = text.lower()
-    found = []
-    for icon, en_kws, fa_kws in SENTIMENT_RULES:
-        if any(kw in txt for kw in en_kws) or any(kw in txt for kw in fa_kws):
-            found.append(icon)
-        if len(found) >= 3: break
-    return found or ["📰"]
-
-def calc_importance(title: str, body: str, icons: list, stype: str) -> int:
-    txt = (title + " " + body).lower()
-    score = sum(IMPORTANCE_BOOST.get(ic, 0) for ic in icons)
-    if any(k in txt for k in BREAKING_KEYWORDS): score += 2
-    if stype == "tw" and score > 0: score += 1
-    return min(score, 10)
-
-def sentiment_bar(icons): return "  ".join(icons)
-
-# ══════════════════════════════════════════════════════════════════════════
-# Telegram ارسال
-# ══════════════════════════════════════════════════════════════════════════
-def _tgapi(path: str) -> str:
-    return f"https://api.telegram.org/bot{BOT_TOKEN}/{path}"
-
-async def tg_send_text(client: httpx.AsyncClient, text: str) -> bool:
-    text = text[:MAX_MSG_LEN]
-    for attempt in range(3):
-        try:
-            r = await client.post(_tgapi("sendMessage"),
-                json={"chat_id": CHANNEL_ID, "text": text,
-                      "parse_mode": "HTML", "disable_web_page_preview": False},
-                timeout=httpx.Timeout(15.0))
-            d = r.json()
-            if r.status_code == 200 and d.get("ok"): return True
-            if d.get("error_code") == 429:
-                wait = d.get("parameters", {}).get("retry_after", 20)
-                await asyncio.sleep(wait)
-            elif attempt < 2:
-                await asyncio.sleep(3)
-        except Exception as e:
-            log.warning(f"TG send: {e}")
-            if attempt < 2: await asyncio.sleep(5)
-    return False
-
-async def tg_send_photo(client: httpx.AsyncClient, buf: io.BytesIO,
-                         caption: str) -> bool:
-    caption = caption[:1024]
-    try:
-        buf.seek(0)
-        r = await client.post(_tgapi("sendPhoto"),
-            data={"chat_id": CHANNEL_ID, "caption": caption, "parse_mode": "HTML"},
-            files={"photo": ("card.jpg", buf, "image/jpeg")},
-            timeout=httpx.Timeout(20.0))
-        return r.status_code == 200 and r.json().get("ok", False)
-    except Exception as e:
-        log.warning(f"TG photo: {e}"); return False
-
-# ══════════════════════════════════════════════════════════════════════════
-# PIL کارت خبری
-# ══════════════════════════════════════════════════════════════════════════
-BG_DARK  = (14, 16, 22)
-BG_BAR   = (22, 26, 34)
-FG_WHITE = (235, 237, 242)
-FG_GREY  = (120, 132, 148)
-ACCENT_MAP = {
-    "🇮🇷":(180,40,40), "🇮🇱":(30,90,180), "🇺🇸":(40,80,160),
-    "🔍":(60,130,80), "🌐":(100,60,130), "🏛️":(140,100,40),
-}
-ICON_BG = {
-    "💀":(140,20,20),"🔴":(180,30,30),"💥":(190,80,10),
-    "✈️":(20,90,160),"🚀":(100,20,160),"☢️":(0,130,50),
-    "🚢":(10,80,140),"🕵️":(60,55,70),"🛡️":(20,110,80),
-    "🔥":(180,60,0),"💰":(130,110,0),"⚠️":(160,110,0),
-    "🤝":(20,120,100),"📜":(60,80,100),"📰":(45,58,72),
-}
-
-def _get_accent(src, urgent):
-    if urgent: return (210, 40, 40)
-    for k, v in ACCENT_MAP.items():
-        if src.startswith(k) or k in src: return v
-    return (80, 110, 140)
-
-def _wrap(text, chars):
-    words, lines_out, cur = text.split(), [], ""
-    for w in words:
-        if len(cur) + len(w) + 1 <= chars: cur = (cur + " " + w).strip()
-        else:
-            if cur: lines_out.append(cur)
-            cur = w
-    if cur: lines_out.append(cur)
-    return lines_out
-
-def _fonts():
-    try:
-        bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
-        reg  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
-        sm   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
-        return bold, reg, sm
-    except:
-        d = ImageFont.load_default(); return d, d, d
-
-def make_news_card(headline, fa_text, src, dt_str,
-                   urgent=False, sentiment_icons=None):
-    if not PIL_OK: return None
-    try:
-        W, H = 960, 310
-        acc = _get_accent(src, urgent)
-        img = Image.new("RGB", (W, H), BG_DARK)
-        drw = ImageDraw.Draw(img)
-        F_H, F_B, F_sm = _fonts()
-
-        drw.rectangle([(0,0),(W,5)], fill=acc)
-        drw.rectangle([(0,5),(W,58)], fill=BG_BAR)
-        drw.rectangle([(0,58),(W,61)], fill=acc)
-        drw.text((18,18), src[:55],     font=F_sm, fill=acc)
-        drw.text((W-170,18), dt_str[:25], font=F_sm, fill=FG_GREY)
-
-        display = fa_text if (fa_text and len(fa_text) > 5) else headline
-        y = 72
-        for line in _wrap(display, 50)[:4]:
-            drw.text((W-18, y), line, font=F_H, fill=FG_WHITE, anchor="ra")
-            y += 30
-
-        drw.rectangle([(0,H-56),(W,H)], fill=BG_BAR)
-        drw.rectangle([(0,H-58),(W,H-56)], fill=acc)
-        x_pos = 16
-        for ico in (sentiment_icons or ["📰"])[:4]:
-            bg = ICON_BG.get(ico, (50,65,75))
-            drw.rounded_rectangle([(x_pos-2,H-52),(x_pos+38,H-6)], radius=7, fill=bg)
-            drw.text((x_pos+2,H-50), ico, font=F_H, fill=(255,255,255))
-            x_pos += 50
-
-        if urgent: drw.rectangle([(0,61),(5,H-58)], fill=acc)
-
-        buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=85)
-        buf.seek(0)
-        return buf
-    except Exception as e:
-        log.debug(f"card: {e}"); return None
-
-# ══════════════════════════════════════════════════════════════════════════
-# دریافت تصویر اصلی از سایت منبع (og:image)
-# ══════════════════════════════════════════════════════════════════════════
-async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesIO | None":
-    """
-    ۱. صفحه مقاله را fetch می‌کند
-    ۲. og:image یا twitter:image را پیدا می‌کند
-    ۳. تصویر را دانلود و به BytesIO برمی‌گرداند
-    برای t.me و توییتر → None (تصویری وجود ندارد)
-    """
-    if not url or len(url) < 10:
-        return None
-    # منابعی که تصویر ندارند یا نیاز نیست
-    skip_domains = ("t.me", "twitter.com", "x.com", "rss.", "feed.")
-    if any(d in url for d in skip_domains):
-        return None
-    try:
-        # ── مرحله ۱: صفحه مقاله ────────────────────────────────────────
-        r = await client.get(url,
-            timeout=httpx.Timeout(8.0),
-            headers={**COMMON_UA,
-                     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
-            follow_redirects=True)
-        if r.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        # ── مرحله ۲: پیدا کردن URL تصویر ───────────────────────────────
-        img_url = None
-        # اولویت: og:image
-        og = soup.find("meta", property="og:image")
-        if og and og.get("content"):
-            img_url = og["content"]
-        # fallback: twitter:image
-        if not img_url:
-            tw = soup.find("meta", attrs={"name": "twitter:image"})
-            if tw and tw.get("content"):
-                img_url = tw["content"]
-        # fallback: اولین تصویر بزرگ در article
-        if not img_url:
-            for sel in ["article img", "[class*='hero'] img", "[class*='featured'] img",
-                        "[class*='article'] img", ".post-image img"]:
-                el = soup.select_one(sel)
-                if el and el.get("src") and not el["src"].startswith("data:"):
-                    img_url = el["src"]
-                    break
-
-        if not img_url:
-            return None
-
-        # URL نسبی را مطلق کن
-        if img_url.startswith("//"):
-            img_url = "https:" + img_url
-        elif img_url.startswith("/"):
-            from urllib.parse import urlparse
-            p = urlparse(url)
-            img_url = f"{p.scheme}://{p.netloc}{img_url}"
-
-        # ── مرحله ۳: دانلود تصویر ───────────────────────────────────────
-        ir = await client.get(img_url,
-            timeout=httpx.Timeout(10.0),
-            headers={**COMMON_UA, "Accept": "image/*,*/*;q=0.8"},
-            follow_redirects=True)
-        if ir.status_code != 200:
-            return None
-
-        content = ir.content
-        ctype   = ir.headers.get("content-type", "")
-
-        # بررسی اینکه واقعاً تصویر است
-        if not (ctype.startswith("image/") or
-                content[:4] in (b'\xff\xd8\xff', b'\x89PNG', b'GIF8', b'RIFF') or
-                content[:4] == b'WEBP' or content[:2] == b'\xff\xd8'):
-            return None
-
-        # اگه PIL موجود است: crop/resize برای استانداردسازی
-        if PIL_OK:
-            try:
-                img_io = io.BytesIO(content)
-                img    = Image.open(img_io).convert("RGB")
-                # حداقل اندازه ۴۰۰×۲۰۰
-                if img.width < 400 or img.height < 200:
-                    return None
-                # resize اگه خیلی بزرگ است
-                if img.width > 1600 or img.height > 1200:
-                    img.thumbnail((1600, 1200), Image.LANCZOS)
-                out = io.BytesIO()
-                img.save(out, "JPEG", quality=88)
-                out.seek(0)
-                return out
-            except:
-                pass  # اگه PIL fail کرد، raw بفرست
-
-        # بدون PIL: مستقیم برگردان
-        buf = io.BytesIO(content)
-        buf.seek(0)
-        return buf
-
-    except Exception as e:
-        log.debug(f"fetch_image {url[:60]}: {e}")
-        return None
-
-# ══════════════════════════════════════════════════════════════════════════
-# main
-# ══════════════════════════════════════════════════════════════════════════
-async def main():
-    global _TW_SEMA
-    if not BOT_TOKEN or not CHANNEL_ID:
-        log.error("❌ BOT_TOKEN یا CHANNEL_ID نیست!"); return
-
-    # ── semaphore Twitter ─────────────────────────────────────────────
-    _TW_SEMA = asyncio.Semaphore(20)  # ۲۰ handle همزمان
-
-    # ── cutoff هوشمند ────────────────────────────────────────────────
-    # = آخرین اجرا - BUFFER → فقط اخبار واقعاً تازه
-    last_run   = load_run_state()
-    cutoff     = last_run - timedelta(minutes=CUTOFF_BUFFER_MIN)
-    # حداکثر MAX_LOOKBACK_MIN به عقب (برای اجرای اول / بعد از crash)
-    max_cutoff = datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN)
-    cutoff     = max(cutoff, max_cutoff)
-
-    seen    = load_seen()
-    stories = load_stories()
-
-    log.info("=" * 65)
-    log.info(f"🚀 WarBot v17  |  {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
-    log.info(f"   📡 {len(ALL_RSS_FEEDS)} RSS  📢 {len(TELEGRAM_CHANNELS)} TG  𝕏 {len(TWITTER_HANDLES)} TW")
-    log.info(f"   PIL:{'✅' if PIL_OK else '❌'}  seen:{len(seen)}")
-    log.info(f"   ⏱ cutoff={cutoff.astimezone(TEHRAN_TZ).strftime('%H:%M')} تهران"
-             f"  (last_run={last_run.astimezone(TEHRAN_TZ).strftime('%H:%M')})")
-    log.info("=" * 65)
-
-    limits = httpx.Limits(max_connections=100, max_keepalive_connections=30)
-    async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
-
-        # ── ADS-B + fetch موازی ───────────────────────────────────────
-        flight_task = asyncio.create_task(fetch_military_flights(client))
-        raw_task    = asyncio.create_task(fetch_all(client, cutoff))
-        (flight_msgs, flight_aircraft), raw = await asyncio.gather(flight_task, raw_task)
-        log.info(f"📥 {len(raw)} آیتم خام  ✈️ {len(flight_msgs)} تحرک ({len(flight_aircraft)} با موقعیت)")
-
-        # ── پردازش ───────────────────────────────────────────────────
-        collected = []
-        sent_ids  = set()
-        cnt_old = cnt_irrel = cnt_url = cnt_story = 0
-
-        for entry, src_name, src_type, is_emb in raw:
-            eid = make_id(entry)
-
-            # لایه ۱: قبلاً ارسال شده؟
-            if eid in seen:
-                cnt_url += 1; continue
-
-            # لایه ۲: در پنجره زمانی؟ (TG قبلاً فیلتر شده، RSS اینجا)
-            if not is_fresh(entry, cutoff):
-                cnt_old += 1; continue
-
-            # لایه ۳: مرتبط با جنگ؟
-            t    = clean_html(entry.get("title", ""))
-            s    = clean_html(entry.get("summary") or entry.get("description") or "")
-            full = f"{t} {s}"
-            if not is_war_relevant(full, is_embassy=is_emb,
-                                   is_tg=(src_type=="tg"), is_tw=(src_type=="tw")):
-                cnt_irrel += 1; continue
-
-            # لایه ۴: story تکراری؟
-            if is_story_dup(t, stories):
-                seen.add(eid)   # story-dup → به seen اضافه (برای هر run تکرار نشه)
-                cnt_story += 1; continue
-
-            collected.append((eid, entry, src_name, src_type, is_emb))
-            stories = register_story(t, stories)
-
-        log.info(
-            f"📊 قدیمی:{cnt_old}  نامرتبط:{cnt_irrel}  "
-            f"dup:{cnt_url}  story-dup:{cnt_story}  ✅ {len(collected)} خبر"
-        )
-
-        # قدیمی‌ترین اول، حداکثر MAX_NEW_PER_RUN
-        collected = list(reversed(collected))
-        if len(collected) > MAX_NEW_PER_RUN:
-            log.warning(f"⚠️ {len(collected)} → {MAX_NEW_PER_RUN} (برش داده شد)")
-            collected = collected[-MAX_NEW_PER_RUN:]
-
-        # ── ADS-B — نقشه + پیام‌ها ──────────────────────────────────────
-        if flight_aircraft:
-            # نقشه PIL با موقعیت هواپیماها
-            map_buf = make_flight_map(flight_aircraft)
-            if map_buf:
-                regions = set(a["region"] for a in flight_aircraft)
-                cap_parts = [f"✈️ <b>تحرکات هوایی نظامی — {' | '.join(regions)}</b>"]
-                for ac in flight_aircraft[:8]:
-                    cap_parts.append(
-                        f"• <code>{ac['callsign']}</code> ({ac['type']}) "
-                        f"ارتفاع:{int(ac['alt'])//1000 if ac['alt'] else '?'}k ft "
-                        f"سرعت:{ac['gs']} kt — {ac['region']}"
-                    )
-                cap_parts.append(f"\n🕐 {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
-                await tg_send_photo(client, map_buf, "\n".join(cap_parts))
-                await asyncio.sleep(0.8)
-            else:
-                # بدون PIL: ارسال متنی
-                for msg in flight_msgs[:5]:
-                    await tg_send_text(client, msg)
-                    await asyncio.sleep(0.5)
-        elif flight_msgs:
-            for msg in flight_msgs[:3]:
-                await tg_send_text(client, msg)
-                await asyncio.sleep(0.5)
-
-        if not collected:
-            log.info("💤 خبر جنگی جدیدی نیست")
-            save_seen(seen); save_stories(stories); save_run_state()
-            return
-
-        # ── ترجمه — همیشه (Gemini یا MyMemory) ────────────────────────
-        arts_in = [
-            (trim(clean_html(e.get("title", "")), 400),
-             trim(clean_html(e.get("summary") or e.get("description") or ""), 600))
-            for _, e, _, _, _ in collected
-        ]
-        log.info(f"🌐 ترجمه {len(arts_in)} خبر...")
-        translations = await translate_batch(client, arts_in)
-
-        # ── ارسال — تصویر از منبع + فقط فارسی + بدون لینک ────────────
-        sent = 0
-        for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
-            fa_title, fa_body = translations[i]
-            en_title = arts_in[i][0]
-            link     = entry.get("link", "")
-            dt_str   = format_dt(entry)
-
-            # ── عنوان نمایشی: همیشه فارسی ──────────────────────────────
-            # اگه ترجمه نشده یا همان انگلیسی است، MyMemory قبلاً انجام داده
-            display   = fa_title if (fa_title and len(fa_title) > 5) else en_title
-            body_disp = fa_body  if (fa_body  and len(fa_body)  > 10) else ""
-
-            urgent = any(w in (fa_title + fa_body + en_title).lower() for w in [
-                "attack","strike","killed","bomb","explosion","nuclear","missile",
-                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری","اعلام جنگ",
-            ])
-
-            sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title}")
-            s_bar           = sentiment_bar(sentiment_icons)
-            importance      = calc_importance(en_title, "", sentiment_icons, stype)
-
-            log.info(f"  → [{stype}] imp={importance}  {display[:60]}")
-
-            # ── تصویر: از سایت منبع (og:image) ─────────────────────────
-            img_buf = None
-            if link and stype == "rss":   # فقط RSS — توییتر/تلگرام تصویر ندارند
-                img_buf = await fetch_article_image(client, link)
-
-            # ── ساخت caption فارسی — بدون لینک/منبع ────────────────────
-            caption_parts = [s_bar, f"<b>{esc(display)}</b>"]
-            if body_disp and len(body_disp) > 20 and body_disp[:60].lower() not in display[:60].lower():
-                caption_parts += ["", esc(trim(body_disp, 700))]
-            if dt_str:
-                caption_parts += ["", f"🕐 {dt_str}"]
-            caption = "\n".join(caption_parts)
-
-            card_sent = False
-
-            # ── ارسال عکس اصلی از سایت ──────────────────────────────────
-            if img_buf:
-                ok = await tg_send_photo(client, img_buf, caption)
-                if ok:
-                    card_sent = True
-                    log.info(f"    ✅ تصویر+متن ارسال شد")
-                else:
-                    img_buf = None  # fallback به کارت PIL
-
-            # ── اگه تصویر نبود: کارت PIL ────────────────────────────────
-            if not card_sent and PIL_OK:
-                buf = make_news_card(display, "", src_name, dt_str, urgent, sentiment_icons)
-                if buf:
-                    ok = await tg_send_photo(client, buf, caption)
-                    if ok:
-                        card_sent = True
-                        log.info(f"    ✅ کارت PIL ارسال شد")
-
-            # ── آخرین fallback: متن خالص ────────────────────────────────
-            if not card_sent:
-                ok = await tg_send_text(client, caption)
-                if ok:
-                    card_sent = True
-                    log.info(f"    ✅ متن ارسال شد")
-
-            if card_sent:
-                sent_ids.add(eid)
-                sent += 1
-            await asyncio.sleep(SEND_DELAY)
-
-        # فقط ارسال‌شده‌ها به seen
-        seen.update(sent_ids)
-        save_seen(seen); save_stories(stories); save_run_state()
-        log.info(f"🏁 {sent}/{len(collected)} خبر  seen:{len(seen)}")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+           
