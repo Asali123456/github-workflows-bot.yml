@@ -1,16 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════╗
-║  🛡️  Iran-USA-Israel WAR BOT  v17 — بازنویسی اساسی                      ║
-║                                                                          ║
-║  اصلاحات اساسی v17:                                                      ║
-║  ✅ cutoff = last_run - 3min → دیگه url-dup انبوه نداریم                 ║
-║  ✅ همه ۴۷ Twitter handle هر اجرا (semaphore=20)                         ║
-║  ✅ Nitter اول → RSSHub → xcancel (بهینه برای GitHub Actions)            ║
-║  ✅ seen.json فقط sent_ids → سبک و دقیق                                  ║
-║  ✅ TG cutoff = last_run نه ۲ ساعت                                        ║
-╚══════════════════════════════════════════════════════════════════════════╝
-"""
-
 import os, json, hashlib, asyncio, logging, re, io
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -52,20 +39,20 @@ RUN_STATE_FILE    = "run_state.json"
 NITTER_CACHE_FILE = "nitter_cache.json"
 
 # ── زمان‌بندی ─────────────────────────────────────────────────────────────
-# مهم‌ترین تغییر v17: cutoff = last_run - BUFFER_MIN
 # هر اجرا فقط اخبار تازه بعد از اجرای قبلی را می‌بیند
-CUTOFF_BUFFER_MIN  = 3    # buffer برای جلوگیری از miss شدن
-MAX_LOOKBACK_MIN   = 15   # حداکثر برگشت به عقب (اولین اجرا یا بعد crash)
-SEEN_TTL_HOURS     = 6    # seen.json فقط ۶ ساعت نگه می‌داره
-NITTER_CACHE_TTL   = 900  # ۱۵ دقیقه (کوتاه‌تر → نوسازی سریع‌تر)
+CUTOFF_BUFFER_MIN  = 2    # buffer برای جلوگیری از miss (کوچک‌تر = سریع‌تر)
+MAX_LOOKBACK_MIN   = 12   # حداکثر برگشت — کمی بیشتر از cron interval (10min)
+SEEN_TTL_HOURS     = 6
+NITTER_CACHE_TTL   = 900
 
-MAX_NEW_PER_RUN    = 25   # حداکثر خبر per run
+MAX_NEW_PER_RUN    = 30   # بیشتر برای اطمینان از از دست نرفتن خبر
 MAX_MSG_LEN        = 4096
-SEND_DELAY         = 0.6  # ثانیه بین پیام‌ها
-JACCARD_THRESHOLD  = 0.38
+SEND_DELAY         = 0.5
+JACCARD_THRESHOLD  = 0.72  # آزادتر — فقط خبرهای تقریباً یکسان حذف شوند
+MAX_STORIES        = 120   # حافظه کوتاه‌تر → خبرهای تازه بیشتر
 RSS_TIMEOUT        = 7.0
 TG_TIMEOUT         = 10.0
-TW_TIMEOUT         = 5.0  # کوتاه‌تر → fail faster → handle بعدی
+TW_TIMEOUT         = 5.0
 RICH_CARD_THRESHOLD = 7
 
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
@@ -234,52 +221,57 @@ TELEGRAM_CHANNELS = [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# فیلتر موضوعی
+# فیلتر موضوعی — آزاد: هر خبر درباره ایران، آمریکا یا اسراییل
 # ══════════════════════════════════════════════════════════════════════════
-IRAN_KEYWORDS = [
-    "iran","iranian","irgc","islamic republic","khamenei","tehran","persian",
-    "sepah","basij","quds force","rouhani","raisi","pezeshkian",
-    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی","پزشکیان",
+IRAN_KW = [
+    "iran","iranian","irgc","islamic republic","khamenei","tehran","persian gulf",
+    "sepah","basij","quds force","rouhani","raisi","pezeshkian","zarif","araghchi",
+    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی","پزشکیان","ظریف","نطنز","فردو",
 ]
-OPPONENT_KEYWORDS = [
-    "israel","israeli","idf","netanyahu","us military","united states","pentagon",
-    "centcom","nato","hamas","hezbollah","houthi","saudi","uae",
-    "اسراییل","آمریکا","پنتاگون","نتانیاهو","حماس","حزب‌الله","حوثی",
+USA_KW = [
+    "united states","us military","pentagon","centcom","white house","biden","trump",
+    "us navy","us air force","us army","cia","state department","secretary of state",
+    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا",
 ]
-ACTION_KEYWORDS = [
-    "attack","strike","missile","bomb","war","kill","dead","casualties","nuclear",
-    "sanction","threat","intercept","drone","explosion","airstrike","operation",
-    "deploy","troops","invasion","retaliat","escalat","alert","warning",
-    "حمله","موشک","کشته","جنگ","هسته‌ای","تحریم","تهدید","عملیات",
-    "انفجار","پهپاد","پدافند","رهگیری","تجاوز","آماده‌باش","اعلام جنگ",
+ISRAEL_KW = [
+    "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
+    "iaf","israeli air force","knesset","bennett","herzog","gallant",
+    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین",
+]
+PROXY_KW = [
+    "hamas","hezbollah","houthi","pij","islamic jihad","ansar allah",
+    "حماس","حزب‌الله","حوثی","جهاد اسلامی","انصارالله",
 ]
 HARD_EXCLUDE = [
-    "football","soccer","basketball","olympic","sports","cooking",
-    "fashion","celebrity","entertainment","music","award",
-    "فوتبال","سینما","موسیقی","ورزش",
+    "football","soccer","basketball","olympic","sport","cooking","recipe",
+    "fashion","celebrity","entertainment","music award","box office","nba","nfl",
+    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس",
 ]
 EMBASSY_OVERRIDE = [
     "evacuate","leave immediately","travel warning","security alert","emergency",
-    "تخلیه","فوری ترک","هشدار","اضطرار",
-]
-
-URGENT_KEYWORDS = [
-    "breaking","urgent","just in","alert","explosion","airstrike","missile strike",
-    "killed","dead","war declared","invasion","nuclear attack","bombed",
-    "حمله","انفجار","فوری","خبر فوری","کشته","موشک","اعلام جنگ","بمباران",
+    "تخلیه","فوری ترک","هشدار امنیتی","اضطرار",
 ]
 
 def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
+    """
+    فیلتر آزاد v18:
+    هر خبری که شامل ایران، آمریکا یا اسراییل باشد — ارسال می‌شود
+    (بدون نیاز به کلمه عمل/action)
+    """
     txt = text.lower()
-    if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE): return True
-    if any(k in txt for k in HARD_EXCLUDE): return False
-    # کلمات اضطراری → قبول فوری (فیلتر بعداً با dedup انجام می‌شه)
-    if any(k in txt for k in URGENT_KEYWORDS): return True
-    hi = any(k in txt for k in IRAN_KEYWORDS)
-    ho = any(k in txt for k in OPPONENT_KEYWORDS)
-    ha = any(k in txt for k in ACTION_KEYWORDS)
-    if is_tg or is_tw: return (hi or ho) and ha
-    return hi and ho and ha
+    # حذف قطعی
+    if any(k in txt for k in HARD_EXCLUDE):
+        return False
+    # سفارت: همیشه pass
+    if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
+        return True
+    # بررسی حضور هر یک از سه طرف اصلی
+    has_iran   = any(k in txt for k in IRAN_KW)
+    has_usa    = any(k in txt for k in USA_KW)
+    has_israel = any(k in txt for k in ISRAEL_KW)
+    has_proxy  = any(k in txt for k in PROXY_KW)
+    # هر خبر با حداقل یک طرف اصلی = ارسال
+    return has_iran or has_usa or has_israel or has_proxy
 
 # ══════════════════════════════════════════════════════════════════════════
 # Twitter/X — Nitter + RSSHub
@@ -444,8 +436,18 @@ ADSB_REGIONS = [
     ("اسراییل/لبنان", 32.1, 35.2, 200),
     ("عراق",           33.3, 44.4, 250),
 ]
-_MIL_TYPES    = {"B52","B2","B1","F15","F16","F22","F35","F18","E3","E8","RC135","U2","P8","MQ9","RQ4","C17","KC135"}
-_CALLSIGN_PFX = ["DOOM","BONE","BUCK","CIAO","JAKE","TORC","GRIM","HAVOC","GHOST"]
+# فقط هواپیماهای جنگی و شناسایی — بدون ترابری (C17, KC135, C130, ...)
+_COMBAT_TYPES   = {"F15","F16","F22","F35","F18","F14","SU35","SU30","MIG29",
+                   "B52","B2","B1",        # بمب‌افکن‌ها
+                   "E3","E8","E767","E737", # هشدار زودهنگام (AWACS)
+                   "RC135","EP3","P8",      # شناسایی الکترونیک
+                   "U2","SR71","RQ4",       # پهپاد/هواپیمای شناسایی ارتفاع بالا
+                   "MQ9","MQ1","TB2","HESA",# پهپادهای مسلح
+                   "A10","AV8","AC130",     # پشتیبانی نزدیک
+                   "EA18","EA6",            # جنگ الکترونیک
+                   }
+_COMBAT_CALLSIGN = ["DOOM","BONE","BUCK","CIAO","JAKE","TORC","GRIM","HAVOC",
+                    "GHOST","VIPER","EAGLE","RAPTOR","DEMON","REAPER","PREDATOR"]
 _ADSB_SEEN    = set()
 
 async def fetch_military_flights(client: httpx.AsyncClient) -> tuple[list, list]:
@@ -475,10 +477,12 @@ async def fetch_military_flights(client: httpx.AsyncClient) -> tuple[list, list]
                     atype    = (ac.get("t") or ac.get("type","")).upper()
                     ac_lat   = ac.get("lat") or ac.get("latitude")
                     ac_lon   = ac.get("lon") or ac.get("longitude")
-                    is_mil   = (any(atype.startswith(m) for m in _MIL_TYPES)
-                                or any(callsign.startswith(p) for p in _CALLSIGN_PFX)
-                                or "A5" in cat)
-                    if not is_mil: continue
+                    is_combat = (
+                        any(atype.startswith(m) for m in _COMBAT_TYPES)
+                        or any(callsign.startswith(p) for p in _COMBAT_CALLSIGN)
+                        or cat in ("A5", "A6", "A7")  # ICAO military/UAV categories
+                    )
+                    if not is_combat: continue
                     uid = f"{hex_id}_{callsign}"
                     if uid in _ADSB_SEEN: continue
                     _ADSB_SEEN.add(uid)
@@ -1004,7 +1008,7 @@ def is_story_dup(title: str, stories: list) -> bool:
 
 def register_story(title: str, stories: list) -> list:
     stories.append([title, list(_bag(title)), list(_entity_triple(title))])
-    return stories[-300:]
+    return stories[-MAX_STORIES:]
 
 # ══════════════════════════════════════════════════════════════════════════
 # seen.json — با TTL — فقط ارسال‌شده‌ها
@@ -1416,29 +1420,108 @@ def make_news_card(headline, fa_text, src, dt_str,
     except Exception as e:
         log.debug(f"card: {e}"); return None
 
-# Article fetcher برای خبرهای مهم
-_ARTICLE_SEL = [
-    "article","[class*='article-body']","[class*='story-body']",
-    ".entry-content",".post-content","[itemprop='articleBody']",
-]
-
-async def fetch_article_text(client: httpx.AsyncClient, url: str) -> str:
-    if not url or "t.me" in url: return ""
+# ══════════════════════════════════════════════════════════════════════════
+# دریافت تصویر اصلی از سایت منبع (og:image)
+# ══════════════════════════════════════════════════════════════════════════
+async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesIO | None":
+    """
+    ۱. صفحه مقاله را fetch می‌کند
+    ۲. og:image یا twitter:image را پیدا می‌کند
+    ۳. تصویر را دانلود و به BytesIO برمی‌گرداند
+    برای t.me و توییتر → None (تصویری وجود ندارد)
+    """
+    if not url or len(url) < 10:
+        return None
+    # منابعی که تصویر ندارند یا نیاز نیست
+    skip_domains = ("t.me", "twitter.com", "x.com", "rss.", "feed.")
+    if any(d in url for d in skip_domains):
+        return None
     try:
-        r = await client.get(url, timeout=httpx.Timeout(7.0), headers=COMMON_UA,
-                             follow_redirects=True)
-        if r.status_code != 200: return ""
+        # ── مرحله ۱: صفحه مقاله ────────────────────────────────────────
+        r = await client.get(url,
+            timeout=httpx.Timeout(8.0),
+            headers={**COMMON_UA,
+                     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"},
+            follow_redirects=True)
+        if r.status_code != 200:
+            return None
+
         soup = BeautifulSoup(r.text, "html.parser")
-        for tag in soup.find_all(["script","style","nav","header","footer","aside"]):
-            tag.decompose()
-        for sel in _ARTICLE_SEL:
-            el = soup.select_one(sel)
-            if el:
-                txt = el.get_text(" ", strip=True)
-                if len(txt) > 150: return txt[:1000]
-        paras = [p.get_text(" ", strip=True) for p in soup.find_all("p") if len(p.get_text()) > 60]
-        return " ".join(paras)[:1000] if paras else ""
-    except: return ""
+
+        # ── مرحله ۲: پیدا کردن URL تصویر ───────────────────────────────
+        img_url = None
+        # اولویت: og:image
+        og = soup.find("meta", property="og:image")
+        if og and og.get("content"):
+            img_url = og["content"]
+        # fallback: twitter:image
+        if not img_url:
+            tw = soup.find("meta", attrs={"name": "twitter:image"})
+            if tw and tw.get("content"):
+                img_url = tw["content"]
+        # fallback: اولین تصویر بزرگ در article
+        if not img_url:
+            for sel in ["article img", "[class*='hero'] img", "[class*='featured'] img",
+                        "[class*='article'] img", ".post-image img"]:
+                el = soup.select_one(sel)
+                if el and el.get("src") and not el["src"].startswith("data:"):
+                    img_url = el["src"]
+                    break
+
+        if not img_url:
+            return None
+
+        # URL نسبی را مطلق کن
+        if img_url.startswith("//"):
+            img_url = "https:" + img_url
+        elif img_url.startswith("/"):
+            from urllib.parse import urlparse
+            p = urlparse(url)
+            img_url = f"{p.scheme}://{p.netloc}{img_url}"
+
+        # ── مرحله ۳: دانلود تصویر ───────────────────────────────────────
+        ir = await client.get(img_url,
+            timeout=httpx.Timeout(10.0),
+            headers={**COMMON_UA, "Accept": "image/*,*/*;q=0.8"},
+            follow_redirects=True)
+        if ir.status_code != 200:
+            return None
+
+        content = ir.content
+        ctype   = ir.headers.get("content-type", "")
+
+        # بررسی اینکه واقعاً تصویر است
+        if not (ctype.startswith("image/") or
+                content[:4] in (b'\xff\xd8\xff', b'\x89PNG', b'GIF8', b'RIFF') or
+                content[:4] == b'WEBP' or content[:2] == b'\xff\xd8'):
+            return None
+
+        # اگه PIL موجود است: crop/resize برای استانداردسازی
+        if PIL_OK:
+            try:
+                img_io = io.BytesIO(content)
+                img    = Image.open(img_io).convert("RGB")
+                # حداقل اندازه ۴۰۰×۲۰۰
+                if img.width < 400 or img.height < 200:
+                    return None
+                # resize اگه خیلی بزرگ است
+                if img.width > 1600 or img.height > 1200:
+                    img.thumbnail((1600, 1200), Image.LANCZOS)
+                out = io.BytesIO()
+                img.save(out, "JPEG", quality=88)
+                out.seek(0)
+                return out
+            except:
+                pass  # اگه PIL fail کرد، raw بفرست
+
+        # بدون PIL: مستقیم برگردان
+        buf = io.BytesIO(content)
+        buf.seek(0)
+        return buf
+
+    except Exception as e:
+        log.debug(f"fetch_image {url[:60]}: {e}")
+        return None
 
 # ══════════════════════════════════════════════════════════════════════════
 # main
@@ -1553,68 +1636,82 @@ async def main():
             save_seen(seen); save_stories(stories); save_run_state()
             return
 
-        # ── ترجمه Gemini ──────────────────────────────────────────────
+        # ── ترجمه — همیشه (Gemini یا MyMemory) ────────────────────────
         arts_in = [
             (trim(clean_html(e.get("title", "")), 400),
              trim(clean_html(e.get("summary") or e.get("description") or ""), 600))
             for _, e, _, _, _ in collected
         ]
-        if GEMINI_API_KEY:
-            log.info(f"🌐 ترجمه {len(arts_in)} خبر...")
-            translations = await translate_batch(client, arts_in)
-        else:
-            translations = arts_in
+        log.info(f"🌐 ترجمه {len(arts_in)} خبر...")
+        translations = await translate_batch(client, arts_in)
 
-        # ── ارسال ─────────────────────────────────────────────────────
+        # ── ارسال — تصویر از منبع + فقط فارسی + بدون لینک ────────────
         sent = 0
         for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
             fa_title, fa_body = translations[i]
             en_title = arts_in[i][0]
-            en_body  = arts_in[i][1]
             link     = entry.get("link", "")
             dt_str   = format_dt(entry)
 
-            # نمایش: فارسی اگه ترجمه شده، وگرنه انگلیسی
-            display   = fa_title if (fa_title and fa_title != en_title and len(fa_title) > 5) else en_title
-            # متن توضیح: فارسی اول
-            body_disp = fa_body  if (fa_body  and len(fa_body)  > 10) else en_body
+            # ── عنوان نمایشی: همیشه فارسی ──────────────────────────────
+            # اگه ترجمه نشده یا همان انگلیسی است، MyMemory قبلاً انجام داده
+            display   = fa_title if (fa_title and len(fa_title) > 5) else en_title
+            body_disp = fa_body  if (fa_body  and len(fa_body)  > 10) else ""
 
-            urgent = any(w in (fa_title + en_title + fa_body).lower() for w in [
+            urgent = any(w in (fa_title + fa_body + en_title).lower() for w in [
                 "attack","strike","killed","bomb","explosion","nuclear","missile",
-                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری",
+                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری","اعلام جنگ",
             ])
 
-            sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title} {en_body}")
-            s_bar      = sentiment_bar(sentiment_icons)
-            importance = calc_importance(en_title, en_body, sentiment_icons, stype)
-            src_icon   = "🏛️" if is_emb else ("𝕏" if stype=="tw" else ("📢" if stype=="tg" else "📡"))
+            sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title}")
+            s_bar           = sentiment_bar(sentiment_icons)
+            importance      = calc_importance(en_title, "", sentiment_icons, stype)
 
             log.info(f"  → [{stype}] imp={importance}  {display[:60]}")
 
+            # ── تصویر: از سایت منبع (og:image) ─────────────────────────
+            img_buf = None
+            if link and stype == "rss":   # فقط RSS — توییتر/تلگرام تصویر ندارند
+                img_buf = await fetch_article_image(client, link)
+
+            # ── ساخت caption فارسی — بدون لینک/منبع ────────────────────
+            caption_parts = [s_bar, f"<b>{esc(display)}</b>"]
+            if body_disp and len(body_disp) > 20 and body_disp[:60].lower() not in display[:60].lower():
+                caption_parts += ["", esc(trim(body_disp, 700))]
+            if dt_str:
+                caption_parts += ["", f"🕐 {dt_str}"]
+            caption = "\n".join(caption_parts)
+
             card_sent = False
-            if PIL_OK:
+
+            # ── ارسال عکس اصلی از سایت ──────────────────────────────────
+            if img_buf:
+                ok = await tg_send_photo(client, img_buf, caption)
+                if ok:
+                    card_sent = True
+                    log.info(f"    ✅ تصویر+متن ارسال شد")
+                else:
+                    img_buf = None  # fallback به کارت PIL
+
+            # ── اگه تصویر نبود: کارت PIL ────────────────────────────────
+            if not card_sent and PIL_OK:
                 buf = make_news_card(display, "", src_name, dt_str, urgent, sentiment_icons)
                 if buf:
-                    cap  = f"{s_bar}\n\n<b>{esc(display)}</b>"
-                    if body_disp and len(body_disp) > 30 and body_disp.lower()[:80] not in display.lower():
-                        cap += f"\n\n{esc(trim(body_disp, 700))}"
-                    cap += f"\n\n{src_icon} <b>{esc(src_name)}</b>  {dt_str}"
-                    if link: cap += f"\n🔗 {link}"
-                    if await tg_send_photo(client, buf, cap):
+                    ok = await tg_send_photo(client, buf, caption)
+                    if ok:
                         card_sent = True
+                        log.info(f"    ✅ کارت PIL ارسال شد")
 
+            # ── آخرین fallback: متن خالص ────────────────────────────────
             if not card_sent:
-                parts = [s_bar, f"<b>{esc(display)}</b>"]
-                if body_disp and len(body_disp) > 30 and body_disp.lower()[:80] not in display.lower():
-                    parts += ["", esc(trim(body_disp, 800))]
-                parts += ["", f"─── {src_icon} <b>{esc(src_name)}</b>  {dt_str}"]
-                if link: parts.append(f"🔗 {link}")
-                if await tg_send_text(client, "\n".join(parts)):
+                ok = await tg_send_text(client, caption)
+                if ok:
                     card_sent = True
+                    log.info(f"    ✅ متن ارسال شد")
 
             if card_sent:
-                sent_ids.add(eid); sent += 1
-                log.info(f"    ✅ ارسال شد")
+                sent_ids.add(eid)
+                sent += 1
             await asyncio.sleep(SEND_DELAY)
 
         # فقط ارسال‌شده‌ها به seen
