@@ -1124,9 +1124,20 @@ def save_stories(stories):
 # ترجمه — Gemini اول، MyMemory رایگان fallback
 # ══════════════════════════════════════════════════════════════════════════
 GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
+"gemini-3.1-pro-preview",
+"gemini-3-pro-preview",
+"gemini-3-flash-preview",
+"gemini-2.5-pro",
+"gemini-2.5-flash",
+"gemini-2.5-flash-lite",
+"gemini-2.5-flash-live-preview",
+"gemini-2.5-flash-tts-preview",
+"gemini-2.5-pro-tts-preview",
+"computer-use-preview",
+"gemini-deep-research-preview",
+"gemini-embeddings",
+"gemini-robotics-preview",
+"gemini-flash-latest",
 ]
 
 # تشخیص متن فارسی
