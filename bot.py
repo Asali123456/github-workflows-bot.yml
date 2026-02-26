@@ -39,20 +39,19 @@ RUN_STATE_FILE    = "run_state.json"
 NITTER_CACHE_FILE = "nitter_cache.json"
 
 # ── زمان‌بندی ─────────────────────────────────────────────────────────────
-# هر اجرا فقط اخبار تازه بعد از اجرای قبلی را می‌بیند
-CUTOFF_BUFFER_MIN  = 2    # buffer برای جلوگیری از miss (کوچک‌تر = سریع‌تر)
-MAX_LOOKBACK_MIN   = 12   # حداکثر برگشت — کمی بیشتر از cron interval (10min)
-SEEN_TTL_HOURS     = 6
+CUTOFF_BUFFER_MIN  = 5    # overlap برای جلوگیری از miss (۵ دقیقه قبل از last_run)
+MAX_LOOKBACK_MIN   = 90   # حداکثر برگشت — GitHub Actions می‌تواند ۳۰-۶۰ دقیقه تأخیر داشته باشد
+SEEN_TTL_HOURS     = 8    # seen.json بیشتر نگه می‌داره
 NITTER_CACHE_TTL   = 900
 
-MAX_NEW_PER_RUN    = 30   # بیشتر برای اطمینان از از دست نرفتن خبر
+MAX_NEW_PER_RUN    = 40   # بیشتر برای جبران تأخیر GitHub
 MAX_MSG_LEN        = 4096
-SEND_DELAY         = 0.5
-JACCARD_THRESHOLD  = 0.72  # آزادتر — فقط خبرهای تقریباً یکسان حذف شوند
-MAX_STORIES        = 120   # حافظه کوتاه‌تر → خبرهای تازه بیشتر
-RSS_TIMEOUT        = 7.0
+SEND_DELAY         = 0.4
+JACCARD_THRESHOLD  = 0.75  # فقط خبرهای تقریباً یکسان حذف شوند
+MAX_STORIES        = 200   # حافظه بیشتر برای dedup صحیح
+RSS_TIMEOUT        = 8.0
 TG_TIMEOUT         = 10.0
-TW_TIMEOUT         = 5.0
+TW_TIMEOUT         = 6.0
 RICH_CARD_THRESHOLD = 7
 
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
@@ -1119,7 +1118,7 @@ def load_stories() -> list:
     return []
 
 def save_stories(stories):
-    json.dump(stories[-300:], open(STORIES_FILE, "w"))
+    json.dump(stories[-MAX_STORIES:], open(STORIES_FILE, "w"))
 
 # ══════════════════════════════════════════════════════════════════════════
 # ترجمه — Gemini اول، MyMemory رایگان fallback
@@ -1676,12 +1675,20 @@ async def main():
     _TW_SEMA = asyncio.Semaphore(20)  # ۲۰ handle همزمان
 
     # ── cutoff هوشمند ────────────────────────────────────────────────
-    # = آخرین اجرا - BUFFER → فقط اخبار واقعاً تازه
-    last_run   = load_run_state()
-    cutoff     = last_run - timedelta(minutes=CUTOFF_BUFFER_MIN)
-    # حداکثر MAX_LOOKBACK_MIN به عقب (برای اجرای اول / بعد از crash)
-    max_cutoff = datetime.now(timezone.utc) - timedelta(minutes=MAX_LOOKBACK_MIN)
-    cutoff     = max(cutoff, max_cutoff)
+    # باگ قبلی: max(cutoff, max_cutoff) باعث می‌شد اخبار ۱۲-۶۰ دقیقه پیش از دست برود
+    # چون GitHub Actions اغلب ۱۵-۳۰ دقیقه تأخیر دارد
+    # اصلاح: فقط از last_run استفاده می‌کنیم، MAX_LOOKBACK_MIN = 90 min
+    last_run = load_run_state()
+    now_utc  = datetime.now(timezone.utc)
+    cutoff   = last_run - timedelta(minutes=CUTOFF_BUFFER_MIN)
+    # فقط cap از بالا — اگه last_run خیلی قدیمی بود (اولین اجرا/crash طولانی)
+    oldest_allowed = now_utc - timedelta(minutes=MAX_LOOKBACK_MIN)
+    if cutoff < oldest_allowed:
+        cutoff = oldest_allowed
+
+    # run_state را قبل از fetch ذخیره کن
+    # اگه bot crash کند، next run از همین نقطه ادامه می‌دهد نه از ابتدا
+    save_run_state()
 
     seen    = load_seen()
     stories = load_stories()
@@ -1729,7 +1736,8 @@ async def main():
 
             # لایه ۴: story تکراری؟
             if is_story_dup(t, stories):
-                seen.add(eid)   # story-dup → به seen اضافه (برای هر run تکرار نشه)
+                # باگ قبلی: seen.add(eid) باعث می‌شد خبر هرگز retry نشود
+                # اصلاح: فقط skip — seen.json فقط برای ارسال‌شده‌هاست
                 cnt_story += 1; continue
 
             collected.append((eid, entry, src_name, src_type, is_emb))
@@ -1774,7 +1782,7 @@ async def main():
 
         if not collected:
             log.info("💤 خبر جنگی جدیدی نیست")
-            save_seen(seen); save_stories(stories); save_run_state()
+            save_seen(seen); save_stories(stories)
             return
 
         # ── ترجمه — همیشه (Gemini یا MyMemory) ────────────────────────
@@ -1859,9 +1867,8 @@ async def main():
                 sent += 1
             await asyncio.sleep(SEND_DELAY)
 
-        # فقط ارسال‌شده‌ها به seen
         seen.update(sent_ids)
-        save_seen(seen); save_stories(stories); save_run_state()
+        save_seen(seen); save_stories(stories)
         log.info(f"🏁 {sent}/{len(collected)} خبر  seen:{len(seen)}")
 
 
