@@ -1,14 +1,14 @@
-name: 🛡️ Iran-USA-Israel War Bot v17
+name: 🛡️ Iran-USA-Israel War Bot v19
 
 on:
   schedule:
-    - cron: '*/2 * * * *'    # هر ۲ دقیقه
+    - cron: '*/10 * * * *'    # هر ۱۰ دقیقه — واقع‌بینانه با GitHub Actions
   workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     permissions:
       contents: write
 
@@ -28,19 +28,19 @@ jobs:
         run: |
           pip install --quiet \
             feedparser \
-            httpx \
             "httpx[http2]" \
             beautifulsoup4 \
             pytz \
             lxml \
             hazm \
-            "Pillow>=9.0.0"
+            "Pillow>=10.0.0"
 
       - name: Run War Bot
         env:
           BOT_TOKEN:      ${{ secrets.BOT_TOKEN }}
           CHANNEL_ID:     ${{ secrets.CHANNEL_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ADMIN_CHAT_ID:  ${{ secrets.ADMIN_CHAT_ID }}
         run: python bot.py
 
       - name: Commit state files
