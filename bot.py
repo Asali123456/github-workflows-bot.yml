@@ -191,14 +191,14 @@ TELEGRAM_CHANNELS = [
     ("🔍 Aurora Intel",          "Aurora_Intel"),
     ("🔍 War Monitor",           "WarMonitor3"),
     # ایران فارسی
-    ("🇮🇷 Iran Intl Persian",   "IranIntlPersian"),
+    ("🇮🇷 Iran Intl Persian",   "IranintlTV"),
     ("🇮🇷 تسنیم فارسی",          "tasnimnewsfa"),
     ("🇮🇷 مهر فارسی",             "mehrnews_fa"),
     ("🇮🇷 ایرنا فارسی",           "irnafarsi"),
     ("🇮🇷 Press TV",              "PressTVnews"),
     # اسراییل
     ("🇮🇱 Kann News",            "kann_news"),
-    ("🇮🇱 Times of Israel",      "timesofisrael"),
+    ("🇮🇱 Times of Israel",      "TheTimesOfIsrael2022"),
     # منطقه
     ("🇸🇦 Al Arabiya Breaking",  "AlArabiya_Brk"),
     ("🇶🇦 Al Jazeera EN",        "AlJazeeraEnglish"),
