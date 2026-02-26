@@ -234,12 +234,12 @@ USA_KW = [
     "u.s.","u.s. navy","u.s. military","u.s. forces","american forces","american military",
     "american troops","carrier strike","uss ", "rubio","austin","hegseth","blinken",
     "american carrier","us carrier","us warship","us troops","us forces","us base",
-    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
+    "آمریکا","آمریکا","پنتاگون","کاخ سفید","روبیو","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
 ]
 ISRAEL_KW = [
     "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
     "iaf","israeli air force","knesset","bennett","herzog","gallant",
-    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین",
+    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین","نیروی هوایی اسراییل",
 ]
 PROXY_KW = [
     "hamas","hezbollah","houthi","pij","islamic jihad","ansar allah",
