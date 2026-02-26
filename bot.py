@@ -30,7 +30,6 @@ log = logging.getLogger("WarBot")
 BOT_TOKEN      = os.environ.get("BOT_TOKEN", "")
 CHANNEL_ID     = os.environ.get("CHANNEL_ID", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-ADMIN_CHAT_ID  = os.environ.get("ADMIN_CHAT_ID", "")
 
 SEEN_FILE         = "seen.json"
 STORIES_FILE      = "stories.json"
@@ -41,8 +40,8 @@ NITTER_CACHE_FILE = "nitter_cache.json"
 
 # ── زمان‌بندی ─────────────────────────────────────────────────────────────
 # هر اجرا فقط اخبار تازه بعد از اجرای قبلی را می‌بیند
-CUTOFF_BUFFER_MIN  = 3    # buffer برای جلوگیری از miss
-MAX_LOOKBACK_MIN   = 15   # حداکثر برگشت — متناسب با cron 10min
+CUTOFF_BUFFER_MIN  = 2    # buffer برای جلوگیری از miss (کوچک‌تر = سریع‌تر)
+MAX_LOOKBACK_MIN   = 12   # حداکثر برگشت — کمی بیشتر از cron interval (10min)
 SEEN_TTL_HOURS     = 6
 NITTER_CACHE_TTL   = 900
 
@@ -191,14 +190,14 @@ TELEGRAM_CHANNELS = [
     ("🔍 Aurora Intel",          "Aurora_Intel"),
     ("🔍 War Monitor",           "WarMonitor3"),
     # ایران فارسی
-    ("🇮🇷 Iran Intl Persian",   "IranintlTV"),
+    ("🇮🇷 Iran Intl Persian",   "IranIntlPersian"),
     ("🇮🇷 تسنیم فارسی",          "tasnimnewsfa"),
     ("🇮🇷 مهر فارسی",             "mehrnews_fa"),
     ("🇮🇷 ایرنا فارسی",           "irnafarsi"),
     ("🇮🇷 Press TV",              "PressTVnews"),
     # اسراییل
     ("🇮🇱 Kann News",            "kann_news"),
-    ("🇮🇱 Times of Israel",      "TheTimesOfIsrael2022"),
+    ("🇮🇱 Times of Israel",      "timesofisrael"),
     # منطقه
     ("🇸🇦 Al Arabiya Breaking",  "AlArabiya_Brk"),
     ("🇶🇦 Al Jazeera EN",        "AlJazeeraEnglish"),
@@ -214,105 +213,34 @@ TELEGRAM_CHANNELS = [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# فیلتر موضوعی — فقط جنگ ایران/آمریکا/اسراییل
+# فیلتر موضوعی — آزاد: هر خبر درباره ایران، آمریکا یا اسراییل
 # ══════════════════════════════════════════════════════════════════════════
 IRAN_KW = [
-    # نظامی
-    "iran","iranian","irgc","islamic republic","quds force","basij","sepah",
-    "iranian military","iranian navy","iranian air force","iranian army",
-    "iranian missile","iranian drone","shahed","arash","karrar","kaman",
-    "fateh","emad","sejjil","khorramshahr","hoveyzeh","soumar","meshkat",
-    "bavar-373","sayyad","raad","mersad","khordad","talash",
-    # رهبران/سیاسی
-    "khamenei","pezeshkian","araghchi","zarif","raisi","rouhani",
-    "bagheri","salami","qaani","dehghan","shamkhani",
-    # مکان‌ها
-    "tehran","isfahan","natanz","fordow","parchin","bandar abbas","bushehr",
-    "chabahar","strait of hormuz","persian gulf","kharg island",
-    # فارسی
-    "ایران","سپاه","سپاه پاسداران","نیروی قدس","بسیج","ارتش ایران",
-    "نیروی دریایی ایران","نیروی هوایی ایران","موشک ایران","پهپاد ایران",
-    "خامنه‌ای","پزشکیان","عراقچی","هوافضا","ترامپ","پاکدل","قاآنی",
-    "تهران","اصفهان","نطنز","فردو","پارچین","بندرعباس","بوشهر",
-    "تنگه هرمز","خلیج فارس","جزیره خارک","ژنو",
-    "شاهد","فاتح","عماد","سجیل","خرمشهر","باور-۳۷۳",
+    "iran","iranian","irgc","islamic republic","khamenei","tehran","persian gulf",
+    "sepah","basij","quds force","rouhani","raisi","pezeshkian","zarif","araghchi",
+    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی","پزشکیان","ظریف","نطنز","فردو",
 ]
 USA_KW = [
-    # نظامی
-    "united states","us military","pentagon","centcom","white house",
-    "us navy","us air force","us army","us marines","us forces",
-    "american military","american forces","american troops","american carrier",
-    "uss ","carrier strike","naval fleet","fifth fleet",
-    "b-52","b-2","b-1","f-22","f-35","f-15","f-16","f-18","mq-9","rq-4",
-    "tomahawk","jdam","moab","thaad","patriot missile","aegis",
-    "cia","nsa","dia","state department","secretary of state",
-    # رهبران
-    "biden","trump","austin","hegseth","rubio","blinken","sullivan",
-    "milley","brown","kurilla",
-    # مکان‌ها
-    "al udeid","al dhafra","camp arifjan","diego garcia","incirlik",
-    "u.s.","u.s. navy","u.s. military","u.s. forces",
-    # فارسی
-    "آمریکا","ایالات متحده","پنتاگون","ستاد مرکزی آمریکا",
-    "نیروی دریایی آمریکا","نیروی هوایی آمریکا","ارتش آمریکا",
-    "تفنگداران آمریکا","ناوگان پنجم","ناو هواپیمابر",
-    "کاخ سفید","سیا","وزارت خارجه آمریکا",
-    "بایدن","ترامپ","روبیو","بلینکن","سالیوان","هگست",
+    "united states","us military","pentagon","centcom","white house","biden","trump",
+    "us navy","us air force","us army","cia","state department","secretary of state",
+    "u.s.","u.s. navy","u.s. military","u.s. forces","american forces","american military",
+    "american troops","carrier strike","uss ", "rubio","austin","hegseth","blinken",
+    "american carrier","us carrier","us warship","us troops","us forces","us base",
+    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
 ]
 ISRAEL_KW = [
-    # نظامی
-    "israel","israeli","idf","israeli air force","iaf","israeli navy",
-    "iron dome","david's sling","arrow missile","iron beam",
-    "israeli military","israeli forces","israeli army",
-    "mossad","shin bet","shabak","aman",
-    "f-35i","merkava","spike","trophy","rafael","elbit",
-    # رهبران
-    "netanyahu","gallant","gantz","bennett","herzog","katz","halevi",
-    "kochavi","bar","smotrich","ben gvir",
-    # مکان‌ها
-    "tel aviv","jerusalem","haifa","dimona","nevatim","ramon",
-    "golan","negev","knesset","west bank","gaza",
-    # فارسی
-    "اسراییل","اسرائیل","رژیم صهیونیستی","صهیونیست",
-    "ارتش اسراییل","نیروی هوایی اسراییل","نیروی دریایی اسراییل",
-    "موساد","شین بت","گنبد آهنین","تیر داوود","فلاخن داوود",
-    "نتانیاهو","گالانت","گانتز","بنت","هرتزوگ","هالوی",
-    "تل‌آویو","اورشلیم","حیفا","دیمونا","نگو","کنست","غزه","کرانه باختری",
+    "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
+    "iaf","israeli air force","knesset","bennett","herzog","gallant",
+    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین",
 ]
 PROXY_KW = [
     "hamas","hezbollah","houthi","pij","islamic jihad","ansar allah",
-    "kata'ib hezbollah","popular mobilization","hashd al-shaabi",
-    "palestinian resistance","hamas military","qassam brigades",
-    "al-qassam","nasrallah","sinwar","haniyeh","deif",
-    "حماس","حزب‌الله","حزب الله","حوثی","جهاد اسلامی","انصارالله",
-    "کتائب حزب‌الله","حشد الشعبی","بسیج مردمی عراق",
-    "مقاومت فلسطین","گردان‌های قسام","سنوار","هنیه","نصرالله",
-]
-# کلمات عمل — حداقل یکی باید باشد
-ACTION_KW = [
-    "war","attack","strike","missile","bomb","airstrike","kill","dead",
-    "casualt","wound","intercept","launch","fire","shoot","target",
-    "threat","warn","sanction","nuclear","enrichment","uranium",
-    "military","weapon","defense","offensive","operation","deploy",
-    "escalat","retaliat","blockade","siege","invasion","raid",
-    "sabotage","assassination","explosion","blast","drone","cyber",
-    "negotiate","ceasefire","diplomacy","deal","agreement","tension",
-    "conflict","combat","troop","carrier","fleet","battalion",
-    "regiment","brigade","division","squadron",
-    "جنگ","حمله","ضربه","موشک","بمب","بمباران","کشته","شهید",
-    "تلفات","مجروح","رهگیری","شلیک","هدف","تهدید","هشدار",
-    "تحریم","هسته‌ای","غنی‌سازی","اورانیوم","نظامی","سلاح",
-    "دفاع","عملیات","استقرار","تشدید","تلافی","محاصره",
-    "تجاوز","حمله هوایی","خرابکاری","ترور","انفجار","پهپاد",
-    "سایبری","مذاکره","آتش‌بس","دیپلماسی","توافق","تنش",
-    "درگیری","نبرد","نیرو","ناو","ناوگان",
+    "حماس","حزب‌الله","حوثی","جهاد اسلامی","انصارالله",
 ]
 HARD_EXCLUDE = [
     "football","soccer","basketball","olympic","sport","cooking","recipe",
     "fashion","celebrity","entertainment","music award","box office","nba","nfl",
-    "cricket","tennis","golf","wrestling","swimming","marathon",
-    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس","ورزش","والیبال",
-    "بسکتبال","کشتی","شنا",
+    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس",
 ]
 EMBASSY_OVERRIDE = [
     "evacuate","leave immediately","travel warning","security alert","emergency",
@@ -321,61 +249,57 @@ EMBASSY_OVERRIDE = [
 
 def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
     """
-    فیلتر v19: فقط خبرهای جنگ ایران-آمریکا-اسراییل
-    شرط: حداقل یک طرف اصلی + یک کلمه عمل
+    فیلتر آزاد v18:
+    هر خبری که شامل ایران، آمریکا یا اسراییل باشد — ارسال می‌شود
+    (بدون نیاز به کلمه عمل/action)
     """
     txt = text.lower()
+    # حذف قطعی
     if any(k in txt for k in HARD_EXCLUDE):
         return False
+    # سفارت: همیشه pass
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
         return True
+    # بررسی حضور هر یک از سه طرف اصلی
     has_iran   = any(k in txt for k in IRAN_KW)
     has_usa    = any(k in txt for k in USA_KW)
     has_israel = any(k in txt for k in ISRAEL_KW)
     has_proxy  = any(k in txt for k in PROXY_KW)
-    has_action = any(k in txt for k in ACTION_KW)
-    has_side   = has_iran or has_usa or has_israel or has_proxy
-    # توییتر/تلگرام: فقط یک طرف کافیه (معمولاً خلاصه‌ترند)
-    if is_tg or is_tw:
-        return has_side and has_action
-    # RSS: حداقل یک طرف + عمل
-    return has_side and has_action
+    # هر خبر با حداقل یک طرف اصلی = ارسال
+    return has_iran or has_usa or has_israel or has_proxy
 
 # ══════════════════════════════════════════════════════════════════════════
-# Twitter/X — Nitter (Feb 2026 verified instances)
+# Twitter/X — Feb 2026 — ترتیب اولویت از بالاترین uptime در GitHub Actions
 # ══════════════════════════════════════════════════════════════════════════
-# ترتیب بر اساس uptime از GitHub Actions (تست شده فوریه ۲۰۲۶)
-NITTER_INSTANCES = [
-    "https://xcancel.com",                    # ✅ آدرس اصلی — ریدایرکت به rss.xcancel.com
-    "https://rss.xcancel.com",                # ✅ subdomain مستقیم
-    "https://nitter.privacyredirect.com",     # ✅ اغلب کار می‌کند
-    "https://nitter.tiekoetter.com",          # ✅ stable
-    "https://nitter.poast.org",               # فعال
-    "https://nitter.catsarch.com",            # فعال
-    "https://lightbrd.com",                   # فعال
-    "https://n.ramle.be",                     # backup
-    "https://nitter.space",                   # backup
-    "https://nitter.net",                     # backup
-]
+# نکته مهم: اکثر Nitter instances در GitHub Actions IPs بلاک هستند
+# RSSHub معمولاً قابل‌اعتمادتر است — از آن ابتدا استفاده می‌کنیم
 RSSHUB_INSTANCES = [
-    "https://rsshub.app",
-    "https://rsshub.rss.now.sh",
-    "https://rss.shab.fun",
-    "https://rsshub.moeyy.xyz",
-    "https://rsshub.ktachibana.party",
-    "https://rsshub-instance.zeabur.app",
-    "https://rss.fatpandac.com",
-    "https://rsshub.pseudoyu.com",
-    "https://rsshub.mubibai.com",
-    "https://rsshub.atgw.io",
+    "https://rsshub.app",               # ✅ اصلی — پایدارترین
+    "https://rsshub.rss.now.sh",       # ✅ mirror
+    "https://rss.shab.fun",            # backup
+    "https://rsshub.moeyy.xyz",        # backup
+    "https://hub.slar.ru",             # backup
+]
+NITTER_INSTANCES = [
+    "https://rss.xcancel.com",         # ✅ subdomain مستقیم
+    "https://xcancel.com",             # ✅ redirect
+    "https://nitter.poast.org",        # ✅ اغلب در CI کار می‌کند
+    "https://nitter.privacyredirect.com",
+    "https://nitter.tiekoetter.com",
+    "https://lightbrd.com",
+    "https://nitter.catsarch.com",
+    "https://n.ramle.be",
+    "https://nitter.space",
+    "https://nitter.net",
+    "https://nitter.it",
+    "https://nitter.unixfox.eu",
 ]
 
 NITTER_HDR = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+    "User-Agent": "Mozilla/5.0 (compatible; Feedfetcher-Google; +http://www.google.com/feedfetcher.html)",
     "Accept": "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
     "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
 }
 COMMON_UA = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0",
@@ -467,80 +391,67 @@ async def _probe_rsshub(client: httpx.AsyncClient, inst: str) -> tuple | None:
     return None
 
 async def build_twitter_pools(client: httpx.AsyncClient):
-    """Probe موازی — نتایج در cache ذخیره می‌شوند"""
+    """
+    در این نسخه: probe حذف شد.
+    همه fetch_twitter مستقیم RSSHub → Nitter را امتحان می‌کنند.
+    فقط cache را می‌خوانیم که آخرین instance موفق را بیاد داشته باشد.
+    """
     global _nitter_pool, _rsshub_pool
-    if _nitter_pool or _rsshub_pool:
-        return
-
     cached_n, cached_r, ts = _load_nitter_cache()
     age = datetime.now(timezone.utc).timestamp() - ts
-    if age < NITTER_CACHE_TTL and cached_n:
-        _nitter_pool = cached_n
-        _rsshub_pool = cached_r
-        log.info(f"𝕏 cache: Nitter={len(_nitter_pool)} RSSHub={len(_rsshub_pool)}")
-        return
-
-    log.info(f"𝕏 Probing {len(NITTER_INSTANCES)} Nitter + {len(RSSHUB_INSTANCES)} RSSHub...")
-    sema = asyncio.Semaphore(10)
-    async def sp(coro):
-        async with sema:
-            try: return await coro
-            except: return None
-
-    n = len(NITTER_INSTANCES)
-    results = await asyncio.gather(
-        *[sp(_probe_instance(client, u)) for u in NITTER_INSTANCES],
-        *[sp(_probe_rsshub(client, u))  for u in RSSHUB_INSTANCES],
-    )
-    nok = sorted([r for r in results[:n]  if r], key=lambda x: x[1])
-    rok = sorted([r for r in results[n:]  if r], key=lambda x: x[1])
-
-    # اگه probe همه fail کردند → از کل لیست استفاده کن (ممکن است GitHub IP block نباشد)
-    _nitter_pool = [u for u, _ in nok] or list(NITTER_INSTANCES)
-    _rsshub_pool = [u for u, _ in rok]
-
-    log.info(f"𝕏 Nitter کار می‌کند: {len([r for r in results[:n] if r])}/{n}")
-    if nok:
-        log.info(f"  بهترین: {nok[0][0].split('//')[-1]} ({nok[0][1]:.0f}ms)")
-    _save_nitter_cache(_nitter_pool, _rsshub_pool)
+    # اگه cache جدید است: آخرین instance موفق را اول بگذار
+    if age < NITTER_CACHE_TTL:
+        if cached_r: _rsshub_pool = cached_r + [i for i in RSSHUB_INSTANCES if i not in cached_r]
+        if cached_n: _nitter_pool = cached_n + [i for i in NITTER_INSTANCES if i not in cached_n]
+    if not _rsshub_pool: _rsshub_pool = list(RSSHUB_INSTANCES)
+    if not _nitter_pool: _nitter_pool = list(NITTER_INSTANCES)
+    log.info(f"𝕏 pools: RSSHub={len(_rsshub_pool)} Nitter={len(_nitter_pool)}")
 
 async def fetch_twitter(client: httpx.AsyncClient, label: str, handle: str) -> list:
     """
-    دریافت توییت‌ها — v19: اولویت RSSHub (پایدارتر از Nitter در 2026)
-    1. RSSHub (بهترین نرخ موفقیت — ۱۰ instance)
-    2. xcancel.com / rss.xcancel.com
-    3. سایر Nitter instances از pool
+    دریافت توییت‌ها:
+    1. RSSHub (پایدارتر در GitHub Actions CI)
+    2. Nitter instances
+    اولین نتیجه موفق ذخیره می‌شود تا دفعه بعد اول امتحان شود.
     """
     sema = _TW_SEMA or asyncio.Semaphore(15)
     async with sema:
-        # ── مرحله ۱: RSSHub — بالاترین نرخ موفقیت ────────────────
+        # ── RSSHub اول (در CI بهتر کار می‌کند) ─────────────────────────
         for inst in (_rsshub_pool or RSSHUB_INSTANCES):
-            e = await _try_rss(client, f"{inst}/twitter/user/{handle}", timeout=8.0)
-            if e:
-                log.debug(f"𝕏 {handle} ← RSSHub/{inst.split('//')[-1]} ({len(e)})")
-                return [(x, f"𝕏 {label}", "tw", False) for x in e]
+            for path in (f"/twitter/user/{handle}", f"/x/user/{handle}"):
+                e = await _try_rss(client, f"{inst}{path}", timeout=8.0)
+                if e:
+                    log.debug(f"𝕏 {handle} ← RSSHub {inst.split('//')[-1]} ({len(e)})")
+                    # این instance را به اول cache بفرست
+                    _update_pool_cache(inst, is_rsshub=True)
+                    return [(x, f"𝕏 {label}", "tw", False) for x in e]
 
-        # ── مرحله ۲: xcancel (دو URL) ────────────────────────────
-        tried = set()
-        for base in ("https://xcancel.com", "https://rss.xcancel.com"):
-            u = f"{base}/{handle}/rss"
-            tried.add(base)
-            e = await _try_rss(client, u)
+        # ── Nitter ──────────────────────────────────────────────────────
+        for inst in (_nitter_pool or NITTER_INSTANCES):
+            e = await _try_rss(client, f"{inst}/{handle}/rss", timeout=6.0)
             if e:
-                log.debug(f"𝕏 {handle} ← {base.split('//')[-1]} ({len(e)})")
-                return [(x, f"𝕏 {label}", "tw", False) for x in e]
-
-        # ── مرحله ۳: سایر Nitter instances ───────────────────────
-        pool = _nitter_pool or NITTER_INSTANCES
-        for inst in pool:
-            if inst in tried: continue
-            e = await _try_rss(client, f"{inst}/{handle}/rss")
-            if e:
-                log.debug(f"𝕏 {handle} ← {inst.split('//')[-1]} ({len(e)})")
+                log.debug(f"𝕏 {handle} ← Nitter {inst.split('//')[-1]} ({len(e)})")
+                _update_pool_cache(inst, is_rsshub=False)
                 return [(x, f"𝕏 {label}", "tw", False) for x in e]
 
     log.debug(f"𝕏 {handle}: همه fail")
     return []
+
+def _update_pool_cache(working_inst: str, is_rsshub: bool):
+    """instance موفق را به اول لیست cache می‌برد"""
+    global _nitter_pool, _rsshub_pool
+    if is_rsshub:
+        pool = [working_inst] + [i for i in _rsshub_pool if i != working_inst]
+        _rsshub_pool = pool
+        json.dump({"nitter": _nitter_pool, "rsshub": pool,
+                   "ts": datetime.now(timezone.utc).timestamp()},
+                  open(NITTER_CACHE_FILE, "w"))
+    else:
+        pool = [working_inst] + [i for i in _nitter_pool if i != working_inst]
+        _nitter_pool = pool
+        json.dump({"nitter": pool, "rsshub": _rsshub_pool,
+                   "ts": datetime.now(timezone.utc).timestamp()},
+                  open(NITTER_CACHE_FILE, "w"))
 
 # ══════════════════════════════════════════════════════════════════════════
 # ADS-B
@@ -983,10 +894,8 @@ async def fetch_telegram_channel(client: httpx.AsyncClient, label: str,
             dt_str   = time_el.get("datetime", "") if time_el else ""
             entry_dt = None
             if dt_str:
-                try:
-                    entry_dt = datetime.fromisoformat(dt_str.replace("Z","+00:00"))
-                except Exception:
-                    pass
+                try: entry_dt = datetime.fromisoformat(dt_str.replace("Z","+00:00"))
+                except: pass
             # فقط پیام‌های تازه‌تر از cutoff
             if entry_dt and entry_dt < cutoff: continue
             link_el = msg.select_one("a.tgme_widget_message_date")
@@ -1543,92 +1452,124 @@ def make_news_card(headline, fa_text, src, dt_str,
 # ══════════════════════════════════════════════════════════════════════════
 # دریافت تصویر اصلی خبر (نه لوگو — عکس مقاله)
 # ══════════════════════════════════════════════════════════════════════════
-_LOGO_URL_PATTERNS = [
-    "logo", "icon", "favicon", "sprite", "badge", "avatar",
-    "placeholder", "default", "blank", "spacer", "1x1", "pixel",
-    "brand", "masthead", "site-image", "header-img",
-    "thumbnail-default", "no-image", "no-photo",
-    "wp-content/uploads/sites",       # وردپرس شبکه = اغلب لوگو است
+# دریافت تصویر اصلی مقاله (نه لوگو — عکس اصلی خبر)
+# ══════════════════════════════════════════════════════════════════════════
+
+# URL‌هایی که احتمال بالای لوگو دارند
+_SKIP_IMG_PATTERNS = [
+    "logo","icon","favicon","sprite","avatar","placeholder",
+    "default","blank","spacer","1x1","pixel","brand","masthead",
+    "no-image","no-photo","profile","author","byline","signature",
+    "/ad/","/ads/","banner","promo","subscribe","newsletter",
 ]
-_LOGO_CONTENT_DOMAINS = [
-    "gravatar.com",
-    "pbs.twimg.com/profile_images",
-    "graph.facebook.com",
-    "lh3.googleusercontent.com/photo",
-]
-# خبرگزاری‌هایی که og:image اغلب لوگو دارند — باید article img را بگیریم
-_PREFER_ARTICLE_IMG = [
-    "irna.ir", "mehrnews.com", "tasnimnews.com", "farsnews",
-    "defapress.ir", "sepahnews.com", "mashreghnews.ir",
+# CSS selector های ordered برای پیدا کردن تصویر اصلی خبر
+_IMG_SELECTORS = [
+    # ساختارهای article استاندارد
+    "article figure img",
+    "article .featured-image img",
+    "article .hero-image img",
+    "[class*='article-image'] img",
+    "[class*='news-image'] img",
+    "[class*='story-image'] img",
+    "[class*='featured-img'] img",
+    "[class*='lead-image'] img",
+    "[class*='post-image'] img",
+    "[class*='entry-image'] img",
+    # ساختارهای ایرانی
+    ".detail-media img",
+    ".news-photo img",
+    ".content-media img",
+    ".article-img img",
+    ".body img",
+    # عمومی‌تر
+    "figure img",
+    "picture source",
+    "picture img",
+    ".content img",
+    "article img",
 ]
 
 async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesIO | None":
     """
-    تصویر اصلی مقاله (نه لوگو):
-    - og:image را می‌گیرد
-    - اگه خبرگزاری ایرانی است → article img را ترجیح می‌دهد
-    - ابعاد: عرض ≥ 500، نسبت ≥ 1.3:1 (landscape خبری)
+    تصویر اصلی مقاله:
+    ۱. CSS selectors برای یافتن تصویر خبر در متن مقاله
+    ۲. og:image / twitter:image فقط اگه عرض ≥ ۶۰۰ باشد
+    ۳. فیلتر لوگو: حجم < ۱۵KB یا ابعاد < ۵۰۰×۲۸۰ یا ratio < 1.3 → رد
     """
     if not url or len(url) < 10:
         return None
-    skip = ("t.me", "twitter.com", "x.com", "news.google.com",
-            "google.com/rss", "feeds.reuters", "feeds.bbci")
-    if any(d in url for d in skip):
+    skip_domains = ("t.me", "twitter.com", "x.com", "google.com/rss",
+                    "feeds.reuters", "feeds.bbci", "feed.", "rss.")
+    if any(d in url for d in skip_domains):
         return None
 
     try:
         r = await client.get(url,
-            timeout=httpx.Timeout(9.0),
-            headers={**COMMON_UA, "Accept": "text/html,*/*;q=0.8"},
+            timeout=httpx.Timeout(10.0),
+            headers={**COMMON_UA,
+                     "Accept": "text/html,*/*;q=0.8",
+                     "Sec-Fetch-Dest": "document"},
             follow_redirects=True)
         if r.status_code != 200:
             return None
 
         soup = BeautifulSoup(r.text, "html.parser")
-        is_iranian = any(d in url for d in _PREFER_ARTICLE_IMG)
 
-        candidates = []
+        # ── ساخت لیست کاندیدا ───────────────────────────────────────
+        candidates: list[tuple[str, int]] = []  # (url, priority)
 
-        # برای خبرگزاری‌های ایرانی: اول article img بگیر (og:image لوگو است)
-        if is_iranian:
-            for sel in [
-                "article img[src]", ".content img[src]", ".news-content img[src]",
-                ".article-body img[src]", "figure img[src]", ".post-content img[src]",
-            ]:
-                el = soup.select_one(sel)
-                if el and el.get("src") and not el["src"].startswith("data:"):
-                    candidates.append(el["src"])
+        # Priority 1: CSS selector های article/news
+        for sel in _IMG_SELECTORS:
+            for el in soup.select(sel)[:3]:
+                src = None
+                if el.name == "source":
+                    src = el.get("srcset", "").split(" ")[0]
+                else:
+                    # srcset → بزرگ‌ترین
+                    ss = el.get("srcset", "")
+                    if ss:
+                        parts = [p.strip().split(" ") for p in ss.split(",") if p.strip()]
+                        best = sorted(parts, key=lambda x: int(x[1].rstrip("w")) if len(x)>1 and x[1].rstrip("w").isdigit() else 0, reverse=True)
+                        if best: src = best[0][0]
+                    if not src:
+                        src = el.get("src") or el.get("data-src") or el.get("data-lazy-src")
+                if src and not src.startswith("data:"):
+                    candidates.append((src, 10))
 
-        # og:image — برای سایت‌های غربی معمولاً عکس خبر است
+        # Priority 2: og:image
         og = soup.find("meta", property="og:image")
         if og and og.get("content"):
-            candidates.append(og["content"])
+            candidates.append((og["content"], 5))
 
-        # twitter:image
+        # og:image:width بررسی
+        og_w = soup.find("meta", property="og:image:width")
+        if og_w:
+            try:
+                w = int(og_w.get("content", 0))
+                if w < 500 and candidates:
+                    # og:image کوچک است → اولویت پایین‌تر
+                    candidates = [(u, p-3 if u == og.get("content") else p) for u, p in candidates]
+            except: pass
+
+        # Priority 3: twitter:image
         for name in ("twitter:image", "twitter:image:src"):
             tw = soup.find("meta", attrs={"name": name})
             if tw and tw.get("content"):
-                candidates.append(tw["content"]); break
-
-        # article hero
-        if not is_iranian:
-            for sel in [
-                "article figure img[src]", "[class*='hero'] img[src]",
-                "[class*='featured'] img[src]", ".story-image img[src]",
-                "[class*='article-img'] img[src]", "[class*='lead-image'] img[src]",
-            ]:
-                el = soup.select_one(sel)
-                if el and el.get("src") and not el["src"].startswith("data:"):
-                    candidates.append(el["src"])
+                candidates.append((tw["content"], 4)); break
 
         if not candidates:
             return None
 
+        # ── فیلتر و دانلود ──────────────────────────────────────────
         from urllib.parse import urlparse
-        base_p = urlparse(url)
+        base_p = urlparse(r.url)  # URL نهایی (بعد از redirect)
 
-        for img_url in candidates[:5]:
-            # تبدیل URL نسبی
+        # مرتب از اولویت بالا
+        candidates.sort(key=lambda x: -x[1])
+        tried_urls = set()
+
+        for img_url, _ in candidates[:8]:
+            # نرمال‌سازی URL
             if img_url.startswith("//"):
                 img_url = "https:" + img_url
             elif img_url.startswith("/"):
@@ -1636,68 +1577,74 @@ async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesI
             elif not img_url.startswith("http"):
                 continue
 
-            # فیلتر URL‌های لوگو
+            # حذف query string برای مقایسه
             clean_url = img_url.lower().split("?")[0]
-            if any(p in clean_url for p in _LOGO_URL_PATTERNS):
-                log.debug(f"🖼 رد URL لوگو: {img_url[:60]}")
+
+            # فیلتر الگوهای لوگو در URL
+            if any(p in clean_url for p in _SKIP_IMG_PATTERNS):
+                log.debug(f"🖼 skip-url: {img_url[:60]}")
                 continue
-            if any(d in img_url for d in _LOGO_CONTENT_DOMAINS):
+
+            if img_url in tried_urls:
                 continue
+            tried_urls.add(img_url)
 
             # دانلود
             try:
                 ir = await client.get(img_url,
-                    timeout=httpx.Timeout(10.0),
+                    timeout=httpx.Timeout(12.0),
                     headers={**COMMON_UA, "Accept": "image/*,*/*;q=0.5"},
                     follow_redirects=True)
                 if ir.status_code != 200:
                     continue
-            except Exception:
-                continue
+            except Exception as de:
+                log.debug(f"🖼 dl-err: {de}"); continue
 
-            raw = ir.content
-            if len(raw) < 8000:          # خیلی کوچک → لوگو/آیکون
-                continue
-
+            raw   = ir.content
             ctype = ir.headers.get("content-type", "")
-            is_image = (
-                ctype.startswith("image/") or
-                raw[:3] == b'\xff\xd8\xff' or        # JPEG
-                raw[:8] == b'\x89PNG\r\n\x1a\n' or   # PNG
-                raw[:6] in (b'GIF87a', b'GIF89a') or  # GIF
-                raw[:4] == b'RIFF'                     # WEBP
-            )
-            if not is_image:
+
+            # حجم کم → لوگو
+            if len(raw) < 15_000:
+                log.debug(f"🖼 skip-small: {len(raw)}B")
                 continue
 
-            # فیلتر با PIL — حذف لوگو بر اساس ابعاد
+            # چک نوع تصویر
+            is_img = (
+                ctype.startswith("image/") or
+                raw[:3]  == b'\xff\xd8\xff' or
+                raw[:8]  == b'\x89PNG\r\n\x1a\n' or
+                raw[:6]  in (b'GIF87a', b'GIF89a') or
+                raw[:4]  == b'RIFF' or
+                raw[:4]  == b'WEBP'
+            )
+            if not is_img:
+                continue
+
+            # PIL: بررسی ابعاد و resize
             if PIL_OK:
                 try:
                     tmp = Image.open(io.BytesIO(raw))
                     w, h = tmp.size
-                    # حداقل ابعاد خبری
-                    if w < 480 or h < 270:
-                        log.debug(f"🖼 رد کوچک: {w}×{h}")
+                    # عرض < ۵۰۰ یا ارتفاع < ۲۸۰ → لوگو/بنر
+                    if w < 500 or h < 280:
+                        log.debug(f"🖼 skip-dim: {w}×{h}")
                         continue
-                    # نسبت landscape — لوگوها معمولاً مربعی یا عمودی هستند
+                    # نسبت < 1.3 → احتمالاً مربع یا عمودی = لوگو
                     ratio = w / max(h, 1)
-                    if ratio < 1.25:
-                        log.debug(f"🖼 رد ratio={ratio:.2f} ({w}×{h})")
+                    if ratio < 1.3:
+                        log.debug(f"🖼 skip-ratio: {ratio:.2f} ({w}×{h})")
                         continue
-                    # resize
                     img_rgb = tmp.convert("RGB")
                     if w > 1600 or h > 1000:
                         img_rgb.thumbnail((1600, 1000), Image.LANCZOS)
                     out = io.BytesIO()
-                    img_rgb.save(out, "JPEG", quality=90, optimize=True)
+                    img_rgb.save(out, "JPEG", quality=88, optimize=True)
                     out.seek(0)
-                    log.info(f"🖼 ✅ {w}×{h} r={ratio:.1f} {img_url[:55]}")
+                    log.info(f"🖼 ✅ {w}×{h} r={ratio:.1f}  {img_url[:55]}")
                     return out
                 except Exception as pe:
-                    log.debug(f"🖼 PIL err: {pe}")
-                    continue
+                    log.debug(f"🖼 PIL-err: {pe}"); continue
             else:
-                # بدون PIL: فقط اگه size کافی است
                 buf = io.BytesIO(raw); buf.seek(0)
                 return buf
 
@@ -1707,113 +1654,6 @@ async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesI
         log.debug(f"fetch_img {url[:55]}: {e}")
         return None
 
-
-# ══════════════════════════════════════════════════════════════════════════
-# ابزار جدید v19 — هشتگ، برچسب اهمیت، گزارش خطا، خلاصه روزانه
-# ══════════════════════════════════════════════════════════════════════════
-
-_HASHTAG_MAP = [
-    (["iran","irgc","khamenei","ایران","سپاه","خامنه"], "#ایران"),
-    (["israel","idf","netanyahu","اسراییل","نتانیاهو"], "#اسراییل"),
-    (["us ","usa","pentagon","centcom","آمریکا","پنتاگون"], "#آمریکا"),
-    (["missile","rocket","موشک","بالستیک","پهپاد"], "#موشک"),
-    (["nuclear","uranium","هسته","اورانیوم","غنی‌سازی"], "#هسته_ای"),
-    (["hamas","حماس"], "#حماس"),
-    (["hezbollah","حزب‌الله"], "#حزب_الله"),
-    (["houthi","حوثی","انصارالله"], "#حوثی"),
-    (["attack","strike","حمله","ضربه"], "#حمله"),
-    (["sanction","تحریم"], "#تحریم"),
-    (["navy","naval","دریایی","ناو"], "#نیروی_دریایی"),
-    (["airstrike","bombing","بمباران","حمله هوایی"], "#حمله_هوایی"),
-]
-
-def auto_hashtags(text: str, max_tags: int = 4) -> str:
-    txt = text.lower()
-    tags = []
-    for keywords, tag in _HASHTAG_MAP:
-        if any(k in txt for k in keywords):
-            if tag not in tags:
-                tags.append(tag)
-        if len(tags) >= max_tags:
-            break
-    return "  ".join(tags) if tags else "#خبر_فوری"
-
-def importance_label(importance: int) -> str:
-    if importance >= 7: return "🔴 فوری"
-    if importance >= 4: return "🟡 مهم"
-    return "🟢 عادی"
-
-async def send_admin_report(client: httpx.AsyncClient, msg: str):
-    if not ADMIN_CHAT_ID:
-        return
-    try:
-        await client.post(_tgapi("sendMessage"),
-            json={"chat_id": ADMIN_CHAT_ID, "text": f"🤖 WarBot:\n{msg}",
-                  "parse_mode": "HTML"},
-            timeout=httpx.Timeout(10.0))
-    except Exception:
-        pass
-
-def should_daily_summary() -> bool:
-    """خلاصه روزانه — ساعت ۲۲:۰۰ تهران (±۱۰ دقیقه)"""
-    now = datetime.now(TEHRAN_TZ)
-    return now.hour == 22 and now.minute < 12
-
-async def generate_daily_summary(client: httpx.AsyncClient, stories: list):
-    if not GEMINI_API_KEY or not stories:
-        return
-    titles = [s[0] for s in stories[-30:] if isinstance(s, (list, tuple)) and s]
-    if len(titles) < 3:
-        return
-    prompt = (
-        "تو یک تحلیلگر نظامی هستی. این عناوین خبری امروز را خلاصه کن:\n\n"
-        + "\n".join(f"- {t}" for t in titles) +
-        "\n\nخلاصه را در ۳ پاراگراف کوتاه فارسی بنویس:\n"
-        "۱. مهم‌ترین تحولات\n۲. تحلیل وضعیت\n۳. پیش‌بینی\n"
-        "حداکثر ۶۰۰ کلمه. بدون markdown."
-    )
-    base = "https://generativelanguage.googleapis.com/v1beta/models"
-    try:
-        r = await client.post(
-            f"{base}/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-            json={"contents": [{"parts": [{"text": prompt}]}],
-                  "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048}},
-            timeout=httpx.Timeout(45.0))
-        if r.status_code != 200:
-            return
-        text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        now_str = datetime.now(TEHRAN_TZ).strftime("%Y/%m/%d")
-        msg = (
-            f"📊 <b>خلاصه روزانه تحولات نظامی — {now_str}</b>\n"
-            f"{'━' * 30}\n\n"
-            f"{esc(text[:3500])}\n\n"
-            f"{'━' * 30}\n"
-            f"#خلاصه_روزانه #تحلیل_نظامی"
-        )
-        await tg_send_text(client, msg)
-        log.info("📊 خلاصه روزانه ارسال شد")
-    except Exception as e:
-        log.warning(f"daily_summary: {e}")
-
-def tension_score(stories: list) -> int:
-    """محاسبه سطح تنش (0-10) بر اساس اخبار اخیر"""
-    if not stories:
-        return 0
-    score = 0
-    high_kw = ["attack","strike","missile","killed","nuclear","war","حمله","کشته","موشک","جنگ","هسته"]
-    med_kw = ["sanction","threat","tension","تحریم","تهدید","تنش","escalat"]
-    recent = [s[0] for s in stories[-20:] if isinstance(s, (list, tuple)) and s]
-    for title in recent:
-        t = title.lower()
-        if any(k in t for k in high_kw): score += 2
-        elif any(k in t for k in med_kw): score += 1
-    return min(score, 10)
-
-def tension_bar(score: int) -> str:
-    filled = "🟥" * score + "⬜" * (10 - score)
-    labels = {(0,3): "آرام", (4,6): "تنش‌آمیز", (7,8): "خطرناک", (9,10): "بحرانی"}
-    label = next((v for (lo, hi), v in labels.items() if lo <= score <= hi), "نامشخص")
-    return f"📈 سطح تنش: {filled} {score}/10 ({label})"
 
 # ══════════════════════════════════════════════════════════════════════════
 # main
@@ -1846,7 +1686,7 @@ async def main():
     log.info("=" * 65)
 
     limits = httpx.Limits(max_connections=100, max_keepalive_connections=30)
-    async with httpx.AsyncClient(follow_redirects=True, limits=limits, http2=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
 
         # ── ADS-B + fetch موازی ───────────────────────────────────────
         flight_task = asyncio.create_task(fetch_military_flights(client))
@@ -1925,9 +1765,6 @@ async def main():
 
         if not collected:
             log.info("💤 خبر جنگی جدیدی نیست")
-            # خلاصه روزانه حتی اگه خبر جدید نیست
-            if should_daily_summary():
-                await generate_daily_summary(client, stories)
             save_seen(seen); save_stories(stories); save_run_state()
             return
 
@@ -1940,72 +1777,67 @@ async def main():
         log.info(f"🌐 ترجمه {len(arts_in)} خبر...")
         translations = await translate_batch(client, arts_in)
 
-        # ── ارسال — فقط فارسی + تصویر اصلی خبر (نه لوگو، نه PIL card) ─
+        # ── ارسال — فقط فارسی — تصویر اصلی خبر ─────────────────────
         sent = 0
         for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
             fa_title, fa_body = translations[i]
-            en_title = arts_in[i][0]
-            en_body  = arts_in[i][1]
-            link     = entry.get("link", "")
-            dt_str   = format_dt(entry)
+            en_title          = arts_in[i][0]
+            link              = entry.get("link", "")
+            dt_str            = format_dt(entry)
 
-            # ── عنوان نمایشی ─────────────────────────────────────────────
-            # اگه ترجمه فارسی موجود است: استفاده کن
-            # اگه خبر اصلاً فارسی است (مثل مهر/تسنیم): نمایش بده
-            # اگه ترجمه fail کرد و انگلیسی برگشت: همان انگلیسی (بهتر از خالی)
-            display = fa_title.strip() if fa_title and len(fa_title) > 4 else en_title
+            # ── بررسی: آیا ترجمه فارسی موجود است؟ ──────────────────────
+            # اگه عنوان هنوز انگلیسی است → skip (ارسال انگلیسی ممنوع)
+            title_is_fa = _is_farsi(fa_title) if fa_title else False
+            orig_is_fa  = _is_farsi(en_title)   # خبر اصل فارسی بود؟
 
-            # ── متن توضیح ────────────────────────────────────────────────
-            # فقط اگه فارسی است — انگلیسی body نفرست
+            if not title_is_fa and not orig_is_fa:
+                # ترجمه fail کرد و خبر انگلیسی است → skip
+                log.info(f"  ⏭ skip (no FA): {en_title[:55]}")
+                # به seen اضافه نکن تا دفعه بعد retry شود
+                continue
+
+            # عنوان نهایی: اگه فارسی ترجمه شد استفاده کن، وگرنه فارسی اصلی
+            display = fa_title.strip() if title_is_fa else en_title.strip()
+
+            # ── متن توضیح — فقط فارسی ───────────────────────────────────
             body_fa = ""
-            if fa_body and len(fa_body) > 15:
-                if _is_farsi(fa_body):
-                    body_fa = fa_body.strip()
-            # اگه Gemini body ندارد ولی خبر فارسی بود
-            if not body_fa and en_body and _is_farsi(en_body):
-                body_fa = en_body[:700].strip()
+            if fa_body and _is_farsi(fa_body) and len(fa_body) > 15:
+                body_fa = fa_body.strip()
+            elif not body_fa and _is_farsi(en_title) and arts_in[i][1]:
+                # خبر اصل فارسی بود → از body اصلی استفاده کن
+                orig_body = arts_in[i][1]
+                if _is_farsi(orig_body):
+                    body_fa = orig_body.strip()
 
             urgent = any(w in (fa_title + fa_body + en_title).lower() for w in [
                 "attack","strike","killed","bomb","explosion","nuclear","missile",
-                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری","اعلام جنگ",
+                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری","اعلام جنگ","بمب",
             ])
             sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title}")
             s_bar           = sentiment_bar(sentiment_icons)
             importance      = calc_importance(en_title, "", sentiment_icons, stype)
             log.info(f"  → [{stype}] imp={importance}  {display[:65]}")
 
-            # ── caption v19 — فرمت حرفه‌ای با هشتگ و اهمیت ──────────
-            imp_lbl = importance_label(importance)
-            hashtags = auto_hashtags(f"{fa_title} {fa_body} {en_title}")
-
-            _SEP = '━' * 25
-            cap_parts = [
-                f"{imp_lbl}  {s_bar}",
-                _SEP,
-                f"<b>{esc(display)}</b>",
-            ]
-            if body_fa and body_fa[:80] not in display[:80]:
+            # ── caption — فارسی خالص، بدون لینک، بدون منبع ─────────────
+            cap_parts = [s_bar, f"<b>{esc(display)}</b>"]
+            if body_fa and body_fa[:60] not in display[:60]:
                 cap_parts += ["", esc(trim(body_fa, 800))]
-            cap_parts.append(_SEP)
             if dt_str:
-                cap_parts.append(f"🕐 {dt_str}")
-            if link and not any(d in link for d in ('t.me','twitter.com','x.com')):
-                cap_parts.append(f'🔗 <a href="{link}">منبع خبر</a>')
-            cap_parts.append(f"\n{hashtags}")
+                cap_parts.append(f"\n🕐 {dt_str}")
             caption = "\n".join(cap_parts)
 
             card_sent = False
 
-            # ── تصویر اصلی از سایت خبر (فقط RSS) ─────────────────────
+            # ── تصویر اصلی از سایت خبر (RSS only) ──────────────────────
             if link and stype == "rss":
                 img_buf = await fetch_article_image(client, link)
                 if img_buf:
                     ok = await tg_send_photo(client, img_buf, caption[:1024])
                     if ok:
                         card_sent = True
-                        log.info("    ✅ تصویر خبر + متن فارسی")
+                        log.info("    ✅ تصویر خبر + فارسی")
 
-            # ── fallback: متن خالص (بدون PIL card) ────────────────────
+            # ── fallback: متن خالص فارسی ────────────────────────────────
             if not card_sent:
                 ok = await tg_send_text(client, caption)
                 if ok:
@@ -2014,6 +1846,7 @@ async def main():
 
             if card_sent:
                 sent_ids.add(eid)
+                seen.add(eid)   # فوری به seen اضافه کن تا ارسال مجدد نشود
                 sent += 1
             await asyncio.sleep(SEND_DELAY)
 
@@ -2021,26 +1854,6 @@ async def main():
         seen.update(sent_ids)
         save_seen(seen); save_stories(stories); save_run_state()
         log.info(f"🏁 {sent}/{len(collected)} خبر  seen:{len(seen)}")
-
-        # ── سطح تنش — هر ۳ ساعت ────────────────────────────────────
-        now_h = datetime.now(TEHRAN_TZ).hour
-        if now_h % 3 == 0 and datetime.now(TEHRAN_TZ).minute < 12:
-            t_score = tension_score(stories)
-            t_bar = tension_bar(t_score)
-            await tg_send_text(client, t_bar)
-
-        # ── خلاصه روزانه ────────────────────────────────────────────
-        if should_daily_summary():
-            await generate_daily_summary(client, stories)
-
-        # ── گزارش به ادمین ──────────────────────────────────────────
-        report = (
-            f"✅ اجرا کامل\n"
-            f"📰 {sent}/{len(collected)} خبر ارسال\n"
-            f"✈️ {len(flight_msgs)} تحرک نظامی\n"
-            f"👁 seen: {len(seen)}"
-        )
-        await send_admin_report(client, report)
 
 
 if __name__ == "__main__":
