@@ -214,34 +214,105 @@ TELEGRAM_CHANNELS = [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# فیلتر موضوعی — آزاد: هر خبر درباره ایران، آمریکا یا اسراییل
+# فیلتر موضوعی — فقط جنگ ایران/آمریکا/اسراییل
 # ══════════════════════════════════════════════════════════════════════════
 IRAN_KW = [
-    "iran","iranian","irgc","islamic republic","khamenei","tehran","persian gulf",
-    "sepah","basij","quds force","rouhani","raisi","pezeshkian","zarif","araghchi",
-    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی","پزشکیان","ظریف","نطنز","فردو",
+    # نظامی
+    "iran","iranian","irgc","islamic republic","quds force","basij","sepah",
+    "iranian military","iranian navy","iranian air force","iranian army",
+    "iranian missile","iranian drone","shahed","arash","karrar","kaman",
+    "fateh","emad","sejjil","khorramshahr","hoveyzeh","soumar","meshkat",
+    "bavar-373","sayyad","raad","mersad","khordad","talash",
+    # رهبران/سیاسی
+    "khamenei","pezeshkian","araghchi","zarif","raisi","rouhani",
+    "bagheri","salami","qaani","dehghan","shamkhani",
+    # مکان‌ها
+    "tehran","isfahan","natanz","fordow","parchin","bandar abbas","bushehr",
+    "chabahar","strait of hormuz","persian gulf","kharg island",
+    # فارسی
+    "ایران","سپاه","سپاه پاسداران","نیروی قدس","بسیج","ارتش ایران",
+    "نیروی دریایی ایران","نیروی هوایی ایران","موشک ایران","پهپاد ایران",
+    "خامنه‌ای","پزشکیان","عراقچی","ظریف","رئیسی","سلامی","قاآنی",
+    "تهران","اصفهان","نطنز","فردو","پارچین","بندرعباس","بوشهر",
+    "تنگه هرمز","خلیج فارس","جزیره خارک","جمهوری اسلامی",
+    "شاهد","فاتح","عماد","سجیل","خرمشهر","باور-۳۷۳",
 ]
 USA_KW = [
-    "united states","us military","pentagon","centcom","white house","biden","trump",
-    "us navy","us air force","us army","cia","state department","secretary of state",
-    "u.s.","u.s. navy","u.s. military","u.s. forces","american forces","american military",
-    "american troops","carrier strike","uss ", "rubio","austin","hegseth","blinken",
-    "american carrier","us carrier","us warship","us troops","us forces","us base",
-    "آمریکا","پنتاگون","کاخ سفید","بایدن","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
+    # نظامی
+    "united states","us military","pentagon","centcom","white house",
+    "us navy","us air force","us army","us marines","us forces",
+    "american military","american forces","american troops","american carrier",
+    "uss ","carrier strike","naval fleet","fifth fleet",
+    "b-52","b-2","b-1","f-22","f-35","f-15","f-16","f-18","mq-9","rq-4",
+    "tomahawk","jdam","moab","thaad","patriot missile","aegis",
+    "cia","nsa","dia","state department","secretary of state",
+    # رهبران
+    "biden","trump","austin","hegseth","rubio","blinken","sullivan",
+    "milley","brown","kurilla",
+    # مکان‌ها
+    "al udeid","al dhafra","camp arifjan","diego garcia","incirlik",
+    "u.s.","u.s. navy","u.s. military","u.s. forces",
+    # فارسی
+    "آمریکا","ایالات متحده","پنتاگون","ستاد مرکزی آمریکا",
+    "نیروی دریایی آمریکا","نیروی هوایی آمریکا","ارتش آمریکا",
+    "تفنگداران آمریکا","ناوگان پنجم","ناو هواپیمابر",
+    "کاخ سفید","سیا","وزارت خارجه آمریکا",
+    "بایدن","ترامپ","روبیو","بلینکن","سالیوان","هگست",
 ]
 ISRAEL_KW = [
-    "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
-    "iaf","israeli air force","knesset","bennett","herzog","gallant",
-    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین",
+    # نظامی
+    "israel","israeli","idf","israeli air force","iaf","israeli navy",
+    "iron dome","david's sling","arrow missile","iron beam",
+    "israeli military","israeli forces","israeli army",
+    "mossad","shin bet","shabak","aman",
+    "f-35i","merkava","spike","trophy","rafael","elbit",
+    # رهبران
+    "netanyahu","gallant","gantz","bennett","herzog","katz","halevi",
+    "kochavi","bar","smotrich","ben gvir",
+    # مکان‌ها
+    "tel aviv","jerusalem","haifa","dimona","nevatim","ramon",
+    "golan","negev","knesset","west bank","gaza",
+    # فارسی
+    "اسراییل","اسرائیل","رژیم صهیونیستی","صهیونیست",
+    "ارتش اسراییل","نیروی هوایی اسراییل","نیروی دریایی اسراییل",
+    "موساد","شین بت","گنبد آهنین","تیر داوود","فلاخن داوود",
+    "نتانیاهو","گالانت","گانتز","بنت","هرتزوگ","هالوی",
+    "تل‌آویو","اورشلیم","حیفا","دیمونا","نگو","کنست","غزه","کرانه باختری",
 ]
 PROXY_KW = [
     "hamas","hezbollah","houthi","pij","islamic jihad","ansar allah",
-    "حماس","حزب‌الله","حوثی","جهاد اسلامی","انصارالله",
+    "kata'ib hezbollah","popular mobilization","hashd al-shaabi",
+    "palestinian resistance","hamas military","qassam brigades",
+    "al-qassam","nasrallah","sinwar","haniyeh","deif",
+    "حماس","حزب‌الله","حزب الله","حوثی","جهاد اسلامی","انصارالله",
+    "کتائب حزب‌الله","حشد الشعبی","بسیج مردمی عراق",
+    "مقاومت فلسطین","گردان‌های قسام","سنوار","هنیه","نصرالله",
+]
+# کلمات عمل — حداقل یکی باید باشد
+ACTION_KW = [
+    "war","attack","strike","missile","bomb","airstrike","kill","dead",
+    "casualt","wound","intercept","launch","fire","shoot","target",
+    "threat","warn","sanction","nuclear","enrichment","uranium",
+    "military","weapon","defense","offensive","operation","deploy",
+    "escalat","retaliat","blockade","siege","invasion","raid",
+    "sabotage","assassination","explosion","blast","drone","cyber",
+    "negotiate","ceasefire","diplomacy","deal","agreement","tension",
+    "conflict","combat","troop","carrier","fleet","battalion",
+    "regiment","brigade","division","squadron",
+    "جنگ","حمله","ضربه","موشک","بمب","بمباران","کشته","شهید",
+    "تلفات","مجروح","رهگیری","شلیک","هدف","تهدید","هشدار",
+    "تحریم","هسته‌ای","غنی‌سازی","اورانیوم","نظامی","سلاح",
+    "دفاع","عملیات","استقرار","تشدید","تلافی","محاصره",
+    "تجاوز","حمله هوایی","خرابکاری","ترور","انفجار","پهپاد",
+    "سایبری","مذاکره","آتش‌بس","دیپلماسی","توافق","تنش",
+    "درگیری","نبرد","نیرو","ناو","ناوگان",
 ]
 HARD_EXCLUDE = [
     "football","soccer","basketball","olympic","sport","cooking","recipe",
     "fashion","celebrity","entertainment","music award","box office","nba","nfl",
-    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس",
+    "cricket","tennis","golf","wrestling","swimming","marathon",
+    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس","ورزش","والیبال",
+    "بسکتبال","کشتی","شنا",
 ]
 EMBASSY_OVERRIDE = [
     "evacuate","leave immediately","travel warning","security alert","emergency",
@@ -250,24 +321,25 @@ EMBASSY_OVERRIDE = [
 
 def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
     """
-    فیلتر آزاد v18:
-    هر خبری که شامل ایران، آمریکا یا اسراییل باشد — ارسال می‌شود
-    (بدون نیاز به کلمه عمل/action)
+    فیلتر v19: فقط خبرهای جنگ ایران-آمریکا-اسراییل
+    شرط: حداقل یک طرف اصلی + یک کلمه عمل
     """
     txt = text.lower()
-    # حذف قطعی
     if any(k in txt for k in HARD_EXCLUDE):
         return False
-    # سفارت: همیشه pass
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
         return True
-    # بررسی حضور هر یک از سه طرف اصلی
     has_iran   = any(k in txt for k in IRAN_KW)
     has_usa    = any(k in txt for k in USA_KW)
     has_israel = any(k in txt for k in ISRAEL_KW)
     has_proxy  = any(k in txt for k in PROXY_KW)
-    # هر خبر با حداقل یک طرف اصلی = ارسال
-    return has_iran or has_usa or has_israel or has_proxy
+    has_action = any(k in txt for k in ACTION_KW)
+    has_side   = has_iran or has_usa or has_israel or has_proxy
+    # توییتر/تلگرام: فقط یک طرف کافیه (معمولاً خلاصه‌ترند)
+    if is_tg or is_tw:
+        return has_side and has_action
+    # RSS: حداقل یک طرف + عمل
+    return has_side and has_action
 
 # ══════════════════════════════════════════════════════════════════════════
 # Twitter/X — Nitter (Feb 2026 verified instances)
