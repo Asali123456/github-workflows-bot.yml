@@ -63,49 +63,55 @@ TEHRAN_TZ = pytz.timezone("Asia/Tehran")
 IRAN_FEEDS = [
     {"n":"🇮🇷 IRNA English",       "u":"https://en.irna.ir/rss"},
     {"n":"🇮🇷 Mehr News EN",        "u":"https://en.mehrnews.com/rss"},
-    {"n":"🇮🇷 Tasnim News EN",      "u":"https://www.tasnimnews.com/en/rss"},
+    {"n":"🇮🇷 Tasnim News EN",      "u":"https://www.tasnimnews.com/en/rss/feed/0/8/0"},
     {"n":"🇮🇷 Fars News EN",        "u":"https://www.farsnews.ir/rss"},
     {"n":"🇮🇷 Press TV",            "u":"https://www.presstv.ir/rss"},
     {"n":"🇮🇷 ISNA English",        "u":"https://en.isna.ir/rss"},
     {"n":"🇮🇷 Tehran Times",        "u":"https://www.tehrantimes.com/rss"},
     {"n":"🇮🇷 Iran International", "u":"https://www.iranintl.com/en/rss"},
     {"n":"🇮🇷 Iran Wire EN",        "u":"https://iranwire.com/en/feed/"},
+    {"n":"🇮🇷 Radio Farda EN",      "u":"https://en.radiofarda.com/api/zqpqetrruqo"},
     {"n":"🇮🇷 خبرگزاری تسنیم",      "u":"https://www.tasnimnews.com/fa/rss/feed/0/8/0"},
     {"n":"🇮🇷 خبرگزاری مهر",         "u":"https://www.mehrnews.com/rss"},
     {"n":"🇮🇷 خبرگزاری ایرنا",       "u":"https://www.irna.ir/rss"},
     {"n":"🇮🇷 خبرگزاری فارس",        "u":"https://www.farsnews.ir/rss/fa"},
     {"n":"🇮🇷 مشرق نیوز",             "u":"https://www.mashreghnews.ir/rss"},
     {"n":"🇮🇷 دفاع پرس",             "u":"https://www.defapress.ir/fa/rss"},
-    # Google News — جست‌وجوهای دقیق فعلی (فوریه ۲۰۲۶)
-    {"n":"🇮🇷 GNews Iran War",      "u":"https://news.google.com/rss/search?q=Iran+war+attack+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"🇮🇷 GNews IRGC",          "u":"https://news.google.com/rss/search?q=IRGC+Iran+Israel+US+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"🇮🇷 GNews ایران حمله",     "u":"https://news.google.com/rss/search?q=ایران+حمله+موشک+اسراییل+آمریکا&hl=fa&gl=IR&ceid=IR:fa&num=15&tbs=qdr:d"},
-    {"n":"🇮🇷 GNews سپاه",          "u":"https://news.google.com/rss/search?q=سپاه+پاسداران+عملیات&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
+    {"n":"🇮🇷 YJC خبرگزاری",         "u":"https://www.yjc.ir/fa/rss/allnews"},
+    # Google News — جست‌وجوهای دقیق
+    {"n":"📰 GNews Iran War",      "u":"https://news.google.com/rss/search?q=Iran+war+attack+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews IRGC",          "u":"https://news.google.com/rss/search?q=IRGC+Iran+Israel+US+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews ایران حمله",     "u":"https://news.google.com/rss/search?q=ایران+حمله+موشک+اسراییل+آمریکا&hl=fa&gl=IR&ceid=IR:fa&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews سپاه",          "u":"https://news.google.com/rss/search?q=سپاه+پاسداران+عملیات&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
 ]
 ISRAEL_FEEDS = [
-    {"n":"🇮🇱 Jerusalem Post",       "u":"https://www.jpost.com/rss/rssfeedsheadlines.aspx"},
+    # ❌ jpost.com/rss/rssfeedsheadlines.aspx قدیمی بود — آدرس صحیح:
+    {"n":"🇮🇱 Jerusalem Post",       "u":"https://rss.jpost.com/rss/rssfeedsheadlines"},
     {"n":"🇮🇱 Times of Israel",      "u":"https://www.timesofisrael.com/feed/"},
+    {"n":"🇮🇱 Haaretz EN",           "u":"https://www.haaretz.com/srv/haaretz-latest-articles.rss"},
     {"n":"🇮🇱 Israel Hayom EN",      "u":"https://www.israelhayom.com/feed/"},
     {"n":"🇮🇱 Arutz Sheva",          "u":"https://www.israelnationalnews.com/rss.aspx"},
     {"n":"🇮🇱 i24 News",             "u":"https://www.i24news.tv/en/rss"},
-    {"n":"🇮🇱 GNews Israel Iran",    "u":"https://news.google.com/rss/search?q=Israel+Iran+attack+strike&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"🇮🇱 GNews IDF",            "u":"https://news.google.com/rss/search?q=IDF+military+operation+Iran&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"🇮🇱 GNews Iron Dome",      "u":"https://news.google.com/rss/search?q=Iron+Dome+Arrow+missile+defense&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"📰 GNews Israel Iran",    "u":"https://news.google.com/rss/search?q=Israel+Iran+attack+strike&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews IDF",            "u":"https://news.google.com/rss/search?q=IDF+military+operation+Iran&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews Iron Dome",      "u":"https://news.google.com/rss/search?q=Iron+Dome+Arrow+missile+defense&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
 USA_FEEDS = [
-    {"n":"🇺🇸 AP World",             "u":"https://feeds.apnews.com/rss/apf-WorldNews"},
-    {"n":"🇺🇸 Reuters World",        "u":"https://feeds.reuters.com/reuters/worldNews"},
-    {"n":"🇺🇸 Reuters Middle East",  "u":"https://feeds.reuters.com/reuters/MEonlineHeadlines"},
+    # ❌ feeds.reuters.com — از ژوئن ۲۰۲۰ متوقف شده، حذف شد
+    # ❌ feeds.apnews.com/rss/apf-WorldNews — قدیمی، جایگزین شد
+    {"n":"🇺🇸 AP World",             "u":"https://apnews.com/hub/world-news.rss"},
+    {"n":"🇺🇸 AP Middle East",       "u":"https://apnews.com/hub/middle-east.rss"},
     {"n":"🇺🇸 CNN Middle East",      "u":"http://rss.cnn.com/rss/edition_meast.rss"},
+    {"n":"🇺🇸 NBC World News",       "u":"https://feeds.nbcnews.com/feeds/worldnews"},
     {"n":"🇺🇸 USNI News",            "u":"https://news.usni.org/feed"},
     {"n":"🇺🇸 Breaking Defense",     "u":"https://breakingdefense.com/feed/"},
     {"n":"🇺🇸 The War Zone",         "u":"https://www.twz.com/feed"},
     {"n":"🇺🇸 Defense News",         "u":"https://www.defensenews.com/arc/outboundfeeds/rss/"},
     {"n":"🇺🇸 Military Times",       "u":"https://www.militarytimes.com/arc/outboundfeeds/rss/"},
     {"n":"🇺🇸 Long War Journal",     "u":"https://www.longwarjournal.org/feed"},
-    {"n":"🇺🇸 GNews US Iran",        "u":"https://news.google.com/rss/search?q=US+military+Iran+strike+sanction&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"🇺🇸 GNews CENTCOM",        "u":"https://news.google.com/rss/search?q=CENTCOM+Middle+East+military+operation&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
-    {"n":"🇺🇸 GNews Houthi",         "u":"https://news.google.com/rss/search?q=Houthi+Iran+Red+Sea+US+Navy&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"📰 GNews US Iran",        "u":"https://news.google.com/rss/search?q=US+military+Iran+strike+sanction&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GNews CENTCOM",        "u":"https://news.google.com/rss/search?q=CENTCOM+Middle+East+military+operation&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"📰 GNews Houthi",         "u":"https://news.google.com/rss/search?q=Houthi+Iran+Red+Sea+US+Navy&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
     {"n":"⚠️ GNews Nuclear",         "u":"https://news.google.com/rss/search?q=Iran+nuclear+uranium+IAEA+enrichment&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
 EMBASSY_FEEDS = [
@@ -118,6 +124,7 @@ INTL_FEEDS = [
     {"n":"🌐 Al Jazeera",       "u":"https://www.aljazeera.com/xml/rss/all.xml"},
     {"n":"🌐 Middle East Eye",  "u":"https://www.middleeasteye.net/rss"},
     {"n":"🌐 Foreign Policy",   "u":"https://foreignpolicy.com/feed/"},
+    {"n":"🌐 The Guardian ME",  "u":"https://www.theguardian.com/world/middleeast/rss"},
 ]
 
 ALL_RSS_FEEDS = IRAN_FEEDS + ISRAEL_FEEDS + USA_FEEDS + EMBASSY_FEEDS + INTL_FEEDS
@@ -128,7 +135,9 @@ EMBASSY_SET   = {id(f) for f in EMBASSY_FEEDS}
 # ══════════════════════════════════════════════════════════════════════════
 TWITTER_HANDLES = [
     # ─── OSINT / Breaking — اولویت بالا ───────────────────────────────
-    ("🔍 OSINTdefender",        "OSINTdefender"),
+    # ❌ "OSINTdefender" اشتباه بود — handle واقعی @sentdefender است
+    ("🔍 OSINTdefender",        "sentdefender"),
+    ("🔍 OSINTtechnical",       "Osinttechnical"),
     ("🔍 IntelCrab",            "IntelCrab"),
     ("🔍 GeoConfirmed",         "GeoConfirmed"),
     ("🔍 WarMonitor",           "WarMonitor3"),
@@ -183,14 +192,15 @@ TELEGRAM_CHANNELS = [
     ("🔴 Middle East Spectator", "Middle_East_Spectator"),
     ("🔴 Intel Slava Z",         "intelslava"),
     ("🔴 ELINT News",            "ELINTNews"),
+    ("🔴 Clash Report",          "ClashReport"),
     ("🔴 Megatron OSINT",        "Megatron_Ron"),
     ("🔴 Disclose TV",           "disclosetv"),
     ("🔍 OSINTtechnical",        "Osinttechnical"),
-    ("🔍 Iran OSINT",            "IranOSINT"),
     ("🔍 Aurora Intel",          "Aurora_Intel"),
     ("🔍 War Monitor",           "WarMonitor3"),
     # ایران فارسی
-    ("🇮🇷 Iran Intl Persian",   "IranIntlPersian"),
+    # ❌ "IranIntlPersian" اشتباه بود — handle واقعی @IranintlTV است (۱ میلیون عضو)
+    ("🇮🇷 Iran Intl Persian",   "IranintlTV"),
     ("🇮🇷 تسنیم فارسی",          "tasnimnewsfa"),
     ("🇮🇷 مهر فارسی",             "mehrnews_fa"),
     ("🇮🇷 ایرنا فارسی",           "irnafarsi"),
@@ -207,7 +217,6 @@ TELEGRAM_CHANNELS = [
     ("🌐 Reuters Breaking",      "ReutersBreaking"),
     ("🌐 AP News",               "APnews"),
     ("🌐 BBC Breaking",          "BBCBreaking"),
-    ("🌐 OSINTdefender",         "OSINTdefender"),
     ("🌐 GeoConfirmed",          "GeoConfirmed"),
     ("🌐 IntelCrab",             "IntelCrab"),
 ]
