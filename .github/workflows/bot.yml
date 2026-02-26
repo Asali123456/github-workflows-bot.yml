@@ -1,14 +1,21 @@
-name: 🛡️ Iran-USA-Israel War Bot v17
+name: 🛡️ Iran-USA-Israel War Bot v18
 
 on:
   schedule:
-    - cron: '*/2 * * * *'    # هر ۲ دقیقه
+    # GitHub Actions minimum = */5 — کمتر از ۵ دقیقه اجرا نمی‌شود
+    # در عمل هر ۵-۱۰ دقیقه اجرا می‌شود (با تأخیر احتمالی GitHub)
+    - cron: '*/5 * * * *'
   workflow_dispatch:
+
+# جلوگیری از اجرای موازی — اگه run قبلی هنوز تمام نشده منتظر بماند
+concurrency:
+  group: warbot-run
+  cancel-in-progress: false
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8    # افزایش از ۴ به ۸ دقیقه — برای ترجمه و fetch تصویر
     permissions:
       contents: write
 
