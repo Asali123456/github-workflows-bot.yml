@@ -2,7 +2,7 @@ name: 🛡️ Iran-USA-Israel War Bot v19
 
 on:
   schedule:
-    - cron: '*/10 * * * *'    # هر ۱۰ دقیقه — واقع‌بینانه با GitHub Actions
+    - cron: '*/15 * * * *'    # هر ۱۰ دقیقه — واقع‌بینانه با GitHub Actions
   workflow_dispatch:
 
 jobs:
