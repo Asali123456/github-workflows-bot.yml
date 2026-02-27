@@ -34,7 +34,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 SEEN_FILE         = "seen.json"
 STORIES_FILE      = "stories.json"
 GEMINI_STATE_FILE = "gemini_state.json"
-FLIGHT_ALERT_FILE = "flight_alerts.json"
 RUN_STATE_FILE    = "run_state.json"
 NITTER_CACHE_FILE = "nitter_cache.json"
 
@@ -239,181 +238,196 @@ TELEGRAM_CHANNELS = [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# کلیدواژه‌های ۲۷ فوریه ۲۰۲۶ — شخصیت‌ها و رویدادهای جاری
+# کلیدواژه‌های ۲۷ فوریه ۲۰۲۶ — فقط جنگ ایران/آمریکا/اسراییل
+# منطق AND: ایران به تنهایی کافی نیست — باید طرف مقابل یا موضوع جنگی باشد
 # ══════════════════════════════════════════════════════════════════════════
 
-# ─── ایران — رهبری + نظامی + هسته‌ای ───────────────────────────────────────
-IRAN_KW = [
-    # اسامی — مقامات فعلی ۲۰۲۶
-    "khamenei","pezeshkian","araghchi","abbas araghchi",
-    "ali shamkhani","shamkhani",          # دبیر شورای عالی امنیت ملی
-    "ali larijani","larijani",             # رئیس SNSC
-    "esmail baghaei","baghaei",            # سخنگوی وزارت خارجه
-    "hossein salami","salami",             # فرمانده سپاه
-    "mohammad bagheri","bagheri",          # رئیس ستاد کل
-    "ali fadavi","fadavi",                 # فرمانده نیروی دریایی سپاه
-    # سازمان‌ها
-    "irgc","sepah","basij","quds force","islamic republic",
-    "iran","iranian","tehran",
-    # برنامه هسته‌ای ۲۰۲۶ (بعد از حملات ژوئن ۲۰۲۵)
-    "natanz","fordow","isfahan","arak",    # تأسیسات هسته‌ای
-    "iran nuclear","uranium enrichment","centrifuge",
-    "60 percent","90 percent","weapons grade",
-    "reconstitute","rebuild nuclear",      # بازسازی برنامه هسته‌ای
-    "planetary mixer",                     # تجهیزات موشکی کشف‌شده
-    # دیپلماسی ۲۰۲۶
-    "geneva talks","oman talks","vienna talks","nuclear deal",
-    "witkoff iran","kushner iran","araghchi witkoff",
-    "iran sanctions relief","iran deal",
-    # جغرافیا
-    "persian gulf","strait of hormuz","hormuz closure",
-    "iran naval","iris","bandar abbas",    # نیروی دریایی ایران
-    # اعتراضات ۲۰۲۵-۲۰۲۶
-    "iran protests","iranian protests","iran crackdown",
-    "iran unrest","iran uprising","iran demonstrations",
-    "twelve-day war","iran-israel war",    # جنگ ۱۲ روزه ژوئن ۲۰۲۵
-    # فارسی
-    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی",
-    "پزشکیان","عراقچی","شمخانی","لاریجانی","باقری",
-    "نطنز","فردو","اصفهان","تنگه هرمز","خلیج فارس",
-    "غنی‌سازی","اورانیوم","توافق هسته‌ای","مذاکرات هسته‌ای",
-    "اعتراضات ایران","سرکوب","جنگ دوازده روزه",
-    "برنامه موشکی ایران","موشک بالستیک ایران",
+# ─── کلیدواژه‌های نظامی/هسته‌ای ایران که به تنهایی کافی‌اند ──────────────────
+# (فقط اگه این‌ها باشند، بدون نیاز به آمریکا/اسراییل → pass)
+IRAN_MILITARY_KW = [
+    # سازمان‌های نظامی
+    "irgc","sepah","quds force","basij military","irgc navy","irgc aerospace",
+    "سپاه پاسداران","سپاه قدس","بسیج","نیروی هوافضا سپاه",
+    # موشک و پهپاد
+    "ballistic missile iran","iran missile","iran drone attack","shahab",
+    "fateh missile","kheybar","emad","khorramshahr","paveh","arash drone",
+    "shahed drone","shahed-136","mohajer","gaza","soumar cruise missile",
+    "موشک بالستیک","موشک ایران","پهپاد شاهد","پهپاد مهاجر","موشک خیبر",
+    "موشک فتح","موشک کروز","کروز ایران",
+    # تأسیسات هسته‌ای (اهداف احتمالی حمله)
+    "natanz","fordow","arak heavy water","isfahan nuclear","parchin",
+    "نطنز","فردو","اراک","پارچین","اصفهان هسته‌ای",
+    # برنامه هسته‌ای
+    "uranium enrichment iran","iran centrifuge","iran nuclear","60 percent",
+    "90 percent enrichment","weapons grade uranium","nuclear breakout iran",
+    "rebuild natanz","iran nuclear weapon","iran bomb",
+    "غنی‌سازی اورانیوم","سانتریفیوژ ایران","بمب هسته‌ای ایران","اورانیوم ۹۰ درصد",
+    # عملیات نظامی مستقیم
+    "irgc attack","iran attack","iran strike","iran fires","iran launches",
+    "iran naval","iran warship","iran speedboat","iran intercept",
+    "حمله سپاه","حمله ایران","ایران شلیک کرد","ناو ایران",
+    # تحریم نظامی/نفتی
+    "iran oil sanctions","iran oil embargo","iran oil exports blocked",
+    "تحریم نفت ایران","نفت ایران تحریم",
+    # جنگ ژوئن ۲۰۲۵ — پیامدها
+    "twelve-day war","iran-israel war aftermath","iran reconstitute",
+    "iran rebuild nuclear","post-war iran","iran nuclear ruins",
+    "جنگ دوازده روزه","ایران پس از جنگ","بازسازی تأسیسات ایران",
 ]
 
 # ─── آمریکا — تیم ترامپ ۲۰۲۶ ──────────────────────────────────────────────
 USA_KW = [
-    # رئیس جمهور + تیم اصلی
-    "trump","donald trump","white house",
-    "jd vance","vance",                    # معاون رئیس جمهور
-    "marco rubio","rubio",                 # وزیر خارجه
-    "pete hegseth","hegseth",              # وزیر دفاع
-    "scott bessent","bessent",             # وزیر خزانه‌داری
-    "tulsi gabbard","gabbard",             # رئیس اطلاعات ملی
-    # مذاکره‌کنندگان هسته‌ای ۲۰۲۶
-    "steve witkoff","witkoff",             # نماینده ویژه خاورمیانه
-    "jared kushner","kushner",             # نماینده ویژه
-    "brad cooper","cooper",                # فرمانده CENTCOM (در مذاکرات عمان)
-    "mike huckabee","huckabee",            # سفیر آمریکا در اسراییل
+    # شخصیت‌های اصلی
+    "trump","donald trump","white house administration",
+    "jd vance","vice president vance",
+    "marco rubio","secretary rubio",                     # وزیر خارجه
+    "pete hegseth","defense secretary hegseth",          # وزیر دفاع
+    "scott bessent","treasury secretary bessent",
+    "tulsi gabbard","dni gabbard",                       # رئیس اطلاعات
+    # مذاکره‌کنندگان هسته‌ای ۲۰۲۶ (بحران جاری)
+    "steve witkoff","witkoff","trump envoy iran",
+    "jared kushner","kushner iran",
+    "special envoy iran","us iran negotiations",
+    "iran nuclear deal 2026","trump iran deal",
     # نظامی
-    "pentagon","centcom","us military","us navy",
-    "us air force","us army","us forces","us troops",
-    "carrier strike group","aircraft carrier",
-    "uss abraham lincoln","lincoln carrier",
-    "uss gerald r ford","ford carrier",    # ناو دوم که فوریه ۲۰۲۶ اعزام شد
-    "b-52","b-2","f-35","bunker buster",   # سلاح‌های احتمالی حمله به ایران
-    "gbu-57","massive ordnance penetrator","mop",
-    "al udeid","al-udeid",                 # پایگاه قطر که موشک‌ها آماده شدند
-    # سیاسی
-    "united states","u.s.","state department","cia",
-    "iran sanctions","maximum pressure","us tariff iran",
-    "war authorization","aumf","congress iran",
-    "state of the union","sotu iran",      # سخنرانی ترامپ ۲۵ فوریه ۲۰۲۶
+    "pentagon","centcom","us military iran","us navy iran",
+    "us air force iran","us forces middle east",
+    "carrier strike group","uss abraham lincoln","lincoln carrier",
+    "uss gerald r ford","gerald ford carrier","uss dwight eisenhower",
+    "b-52 iran","b-2 bomber iran","f-35 iran",
+    "gbu-57","mop bomb","bunker buster iran",
+    "al udeid","al-udeid air base","diego garcia iran",
+    # تهدید/هشدار ۲۰۲۶
+    "trump threatens iran","us threatens iran","trump ultimatum iran",
+    "us strike iran","us attack iran","us bomb iran",
+    "trump warn iran","final warning iran",
+    # تحریم
+    "iran sanctions 2026","maximum pressure iran","us treasury iran",
+    "trump sanctions iran","oil sanction iran","china iran tariff",
+    "secondary sanctions iran","snap-back sanctions",
+    # سیاست
+    "war authorization iran","aumf iran","congress iran war",
+    "senate iran","state of the union iran",
     # فارسی
-    "آمریکا","ترامپ","پنتاگون","کاخ سفید",
-    "ناو هواپیمابر","ناو آبراهام لینکلن","ناو جرالد فورد",
-    "ویتکوف","کوشنر","روبیو","هگست","بسنت","گبارد","ونس",
-    "تحریم","فشار حداکثری","پایگاه العدید",
+    "ترامپ","پنتاگون","کاخ سفید","ویتکوف","کوشنر","روبیو","هگست","ونس","بسنت","گبارد",
+    "ناو آبراهام لینکلن","ناو جرالد فورد","ناو هواپیمابر آمریکا",
+    "تحریم ایران","فشار حداکثری","ضربه آمریکا","حمله آمریکا به ایران",
+    "پایگاه العدید","بمب‌افکن B52","جنگنده F35",
 ]
 
 # ─── اسراییل — رهبری + نظامی ۲۰۲۶ ────────────────────────────────────────
 ISRAEL_KW = [
-    # رهبری ۲۰۲۶
-    "netanyahu","benjamin netanyahu",
-    "eyal zamir","yoav gallant",           # وزرای دفاع
-    "bezalel smotrich","smotrich",         # وزیر مالی ائتلاف راست افراطی
-    "itamar ben gvir","ben gvir",          # وزیر امنیت ملی
-    "israel katz","katz",                  # وزیر خارجه
+    # رهبری
+    "netanyahu","benjamin netanyahu","pm netanyahu",
+    "eyal zamir","idf chief zamir",
+    "bezalel smotrich","smotrich",
+    "itamar ben gvir","ben gvir",
+    "israel katz",
     # نظامی
-    "idf","mossad","shin bet","aman",
-    "israel","israeli","iaf","israeli air force",
-    "iron dome","arrow missile","david's sling",
-    "tel aviv","jerusalem",
-    "israel iran war","june 2025 strikes",  # جنگ ژوئن ۲۰۲۵
-    "israeli strike iran","iran strike israel",
+    "idf","mossad operation","shin bet","aman intelligence",
+    "israeli air force","iaf strike","israeli airstrike",
+    "israeli strike iran","israel bomb iran","israel attack iran",
+    "iron dome","arrow 3","arrow-3 missile","david's sling",
+    "israel iran war","israel iran military",
+    "operation against iran","israel warns iran",
     # فارسی
-    "اسراییل","نتانیاهو","موساد","گنبد آهنین","موشک ایران",
-    "تل‌آویو","اورشلیم","ارتش اسراییل","نیروی هوایی اسراییل",
-    "اسموتریچ","بن‌گویر",
+    "اسراییل","نتانیاهو","موساد","گنبد آهنین","ارتش اسراییل",
+    "نیروی هوایی اسراییل","حمله اسراییل به ایران","ضربه اسراییل",
+    "اسموتریچ","بن‌گویر","وزیر دفاع اسراییل",
 ]
 
-# ─── منطقه‌ای / پروکسی / میانجی ───────────────────────────────────────────
+# ─── پروکسی‌ها + میانجیان ۲۰۲۶ ───────────────────────────────────────────
 PROXY_KW = [
-    # پروکسی‌های ایران (محور مقاومت — تضعیف‌شده اما فعال)
-    "hamas","hezbollah","houthi","ansar allah",
-    "pij","islamic jihad","kataib hezbollah",
-    # میانجیان هسته‌ای ۲۰۲۶
-    "oman","badr al-busaidi","al-busaidi",  # وزیر خارجه عمان — میانجی
-    "rafael grossi","grossi","iaea",        # مدیر آژانس بین‌المللی انرژی اتمی
-    "turkey mediation","erdogan iran",
-    "qatar mediation","qatar iran",
-    # فارسی
-    "حماس","حزب‌الله","حوثی","انصارالله","جهاد اسلامی",
-    "عمان","گروسی","آژانس اتمی","میانجیگری",
+    # پروکسی‌های ایران
+    "hezbollah iran","hezbollah missile","hezbollah attack",
+    "hamas iran","hamas attack","hamas weapons",
+    "houthi iran","houthi missile","ansar allah attack",
+    "houthi red sea","houthi ship attack","houthi drone",
+    "kataib hezbollah","pij attack","islamic jihad iran",
+    "حزب‌الله لبنان","موشک حزب‌الله","حماس ایران","حوثی یمن",
+    "حوثی دریای سرخ","انصارالله","جهاد اسلامی","کتائب حزب‌الله",
+    # میانجیان هسته‌ای (مهم برای بحران ۲۰۲۶)
+    "oman iran talks","badr al-busaidi iran","al-busaidi",
+    "rafael grossi iran","grossi iran","iaea iran",
+    "iran iaea inspection","iran iaea deal",
+    "turkey iran mediation","erdogan iran",
+    "عمان مذاکرات","گروسی ایران","آژانس اتمی ایران",
+    "بازرسی آژانس","توافق آژانس","مذاکرات عمان",
 ]
 
-# ─── موضوعات کلیدی جنگ/بحران ۲۰۲۶ ───────────────────────────────────────
+# ─── موضوعات بحران ۲۰۲۶ — برای AND logic با "ایران/iran" ─────────────────
 WAR_CONTEXT_KW = [
-    # بحران هسته‌ای
-    "nuclear weapon","nuclear strike","nuclear deal","nuclear talks",
-    "uranium enrichment","weapons grade","iaea inspection",
-    "nuclear breakout","nuclear threshold",
-    "fordow destroy","natanz destroy","isfahan bomb",
-    # حمله نظامی
-    "military strike","airstrike","attack iran","strike iran",
-    "bomb iran","regime change","decapitation strike",
-    "us strike","israel strike",
-    # ناوگان آمریکا
-    "carrier strike group","persian gulf fleet","arabian sea",
-    "military buildup","war preparations",
-    "last chance","final warning","war clock",
-    # تنگه هرمز ۲۰۲۶
-    "hormuz closure","strait blocked","oil tanker iran",
-    "fast attack boat","iranian drone","iranian naval",
-    # تحریم‌ها
-    "iran oil sanctions","25 percent tariff china iran",
-    "china iran oil","iran oil exports",
-    # اعتراضات + کودتا
-    "iran uprising","iran revolution","regime collapse",
-    "iran protests killed","iran crackdown 2026",
-    # رویدادهای مشخص فوریه ۲۰۲۶
-    "geneva round","fourth round talks","vienna iaea",
-    "technical teams iran","nuclear framework",
-    # فارسی
-    "حمله نظامی","ضربه هسته‌ای","تغییر رژیم",
-    "جنگ دوازده روزه","مذاکرات ژنو","مذاکرات وین",
-    "تهدید به جنگ","آماده‌باش نظامی","بسته پیشنهادی",
-    "گفتگوی هسته‌ای","فشار حداکثری","تحریم نفت ایران",
+    # مذاکرات هسته‌ای فعال (بحران جاری فوریه ۲۰۲۶)
+    "geneva talks iran","vienna talks iran","nuclear framework iran",
+    "iran nuclear agreement","iran deal framework",
+    "iran nuclear talks","nuclear negotiations iran",
+    "fourth round","fifth round talks","iran negotiations",
+    "مذاکرات ژنو","مذاکرات وین","چارچوب هسته‌ای","مذاکرات هسته‌ای",
+    "توافق هسته‌ای","بسته پیشنهادی هسته‌ای",
+    # تنش و حمله
+    "strike iran","attack iran","bomb iran",
+    "military strike iran","us strike iran","israel strike iran",
+    "حمله به ایران","ضربه به ایران","بمباران ایران",
+    # آستانه جنگ
+    "war iran","iran war","iran conflict","iran military crisis",
+    "last chance iran","iran ultimatum","countdown iran",
+    "iran war clock","iran deadline",
+    "جنگ با ایران","بحران ایران","اتمام حجت ایران",
+    # تنگه هرمز
+    "strait of hormuz iran","hormuz closure","hormuz blockade",
+    "تنگه هرمز","بستن هرمز","انسداد هرمز",
+    # تحریم‌های کلیدی
+    "iran oil sanctions","iran sanctions","iran nuclear sanctions",
+    "تحریم ایران","تحریم هسته‌ای",
 ]
 
-# ─── حذف قطعی (کاملاً غیرمرتبط) ───────────────────────────────────────────
+# ─── حذف قطعی — اخبار کاملاً بی‌ربط ──────────────────────────────────────
 HARD_EXCLUDE = [
-    "football","soccer","basketball","nba","nfl","world cup","championship",
-    "olympic","marathon","tennis","golf","cricket","baseball","rugby",
-    "celebrity","entertainment","movie","film","music award","concert",
-    "box office","grammy","oscar","emmy","fashion","cooking","recipe","travel guide",
-    "فوتبال","سینما","موسیقی","آشپزی","مد","بازی","سریال","توریست","گردشگری",
-    "stock market","crypto","bitcoin","forex",
-    "بورس","ارز دیجیتال","بیت‌کوین",
-    "climate change","global warming","weather","earthquake","flood",  # بلایا طبیعی
-    "آب‌وهوا","زلزله","سیل",
+    # ورزش
+    "nba","nfl","nhl","mlb","premier league","la liga","serie a",
+    "football match","soccer game","basketball game","world cup",
+    "olympic games","marathon race","tennis tournament","golf tournament",
+    "فوتبال","بسکتبال","والیبال","کشتی","المپیک","لیگ برتر",
+    # سرگرمی/فرهنگ
+    "box office","grammy awards","oscar ceremony","film festival",
+    "music video","celebrity news","reality show","fashion week",
+    "سینما","موسیقی","جوایز فیلم","فشن","سریال",
+    # اقتصاد داخلی بی‌ربط
+    "bitcoin","cryptocurrency","crypto market","ethereum","blockchain",
+    "stock market crash","dow jones","nasdaq","s&p 500",
+    "بیت‌کوین","ارز دیجیتال","بورس",
+    # بلایای طبیعی
+    "earthquake disaster","flood victims","hurricane damage","wildfire",
+    "زلزله","سیل","آتشفشان",
+    # سیاست داخلی ایران بی‌ربط به جنگ
+    "iran economy inflation","iran domestic","iran parliament vote",
+    "iran budget law","iran judiciary","iran court ruling",
+    "iran road accident","iran plane crash","iran traffic",
+    "تورم ایران","بودجه داخلی","مجلس ایران بودجه","دادگاه داخلی ایران",
+    "تصادف جاده","سانحه هوایی داخلی",
 ]
 
 EMBASSY_OVERRIDE = [
-    "evacuate","leave immediately","travel warning","security alert","emergency",
-    "warden message","embassy closed","consulate closed",
-    "تخلیه","فوری ترک","هشدار امنیتی","اضطرار","هشدار سفارت",
+    "evacuate","leave immediately","travel warning level 4",
+    "warden message","embassy closed","consulate closed emergency",
+    "us citizens leave","withdraw diplomats",
+    "تخلیه","فوری ترک","هشدار سفارت","دیپلمات‌ها خارج",
 ]
 
+# ─── فیلتر اصلی با منطق AND برای ایران ────────────────────────────────────
 def is_war_relevant(text: str, is_embassy=False, is_tg=False, is_tw=False) -> bool:
     """
-    فیلتر ۲۰۲۶ — فقط جنگ و تنش ایران/آمریکا/اسراییل
+    فیلتر دقیق ۲۰۲۶ — فقط جنگ و تنش ایران/آمریکا/اسراییل
 
     منطق:
-    ۱. حذف قطعی (ورزش/سرگرمی)
-    ۲. سفارت + هشدار → pass
-    ۳. حداقل یک طرف اصلی (ایران/آمریکا/اسراییل) → pass
-    ۴. موضوع جنگ بدون کشور مشخص → pass (مثلاً "nuclear talks" بدون ذکر ایران)
+    - ایران + موضوع نظامی/هسته‌ای → pass  (IRAN_MILITARY_KW)
+    - ایران + آمریکا → pass
+    - ایران + اسراییل → pass
+    - ایران + موضوع جنگی → pass  (WAR_CONTEXT_KW)
+    - آمریکا + اسراییل → pass
+    - آمریکا + موضوع جنگی → pass
+    - پروکسی (حماس/حوثی/حزب‌الله) → pass
+    - ایران به تنهایی → REJECT (خبر داخلی)
     """
     txt = text.lower()
 
@@ -421,19 +435,41 @@ def is_war_relevant(text: str, is_embassy=False, is_tg=False, is_tw=False) -> bo
     if any(k in txt for k in HARD_EXCLUDE):
         return False
 
-    # ۲. سفارت
+    # ۲. سفارت + هشدار فوری → pass
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
         return True
 
-    # ۳. حضور هر طرف اصلی
-    if any(k in txt for k in IRAN_KW):   return True
-    if any(k in txt for k in USA_KW):    return True
-    if any(k in txt for k in ISRAEL_KW): return True
-    if any(k in txt for k in PROXY_KW):  return True
+    # ۳. بررسی حضور هر گروه
+    has_iran_mil  = any(k in txt for k in IRAN_MILITARY_KW)
+    has_iran_name = ("iran" in txt or "iranian" in txt or "ایران" in txt
+                     or "تهران" in txt or "خامنه" in txt or "پزشکیان" in txt
+                     or "عراقچی" in txt or "irgc" in txt or "tehran" in txt)
+    has_usa       = any(k in txt for k in USA_KW)
+    has_israel    = any(k in txt for k in ISRAEL_KW)
+    has_war_ctx   = any(k in txt for k in WAR_CONTEXT_KW)
+    has_proxy     = any(k in txt for k in PROXY_KW)
 
-    # ۴. موضوعات جنگ خاورمیانه حتی بدون ذکر صریح کشور
-    if any(k in txt for k in WAR_CONTEXT_KW): return True
+    # ۴. موضوعات نظامی/هسته‌ای ایران → همیشه pass
+    if has_iran_mil:
+        return True
 
+    # ۵. ایران + طرف مقابل یا موضوع جنگ → pass
+    if has_iran_name and (has_usa or has_israel or has_war_ctx):
+        return True
+
+    # ۶. آمریکا + اسراییل → pass (خبر مرتبط با منطقه)
+    if has_usa and has_israel:
+        return True
+
+    # ۷. آمریکا + موضوع جنگی → pass
+    if has_usa and has_war_ctx:
+        return True
+
+    # ۸. پروکسی → pass (حوثی/حماس/حزب‌الله همیشه مرتبط)
+    if has_proxy:
+        return True
+
+    # ۹. ایران به تنهایی بدون موضوع جنگی → REJECT
     return False
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -622,400 +658,6 @@ def _update_pool_cache(working_inst: str, is_rsshub: bool):
                   open(NITTER_CACHE_FILE, "w"))
 
 # ══════════════════════════════════════════════════════════════════════════
-# ADS-B
-# ══════════════════════════════════════════════════════════════════════════
-ADSB_API     = "https://api.adsb.one/v2"
-ADSB_REGIONS = [
-    ("ایران",          32.4, 53.7, 250),
-    ("خلیج‌فارس",     26.5, 52.0, 250),
-    ("اسراییل/لبنان", 32.1, 35.2, 200),
-    ("عراق",           33.3, 44.4, 250),
-]
-# فقط هواپیماهای جنگی و شناسایی — بدون ترابری (C17, KC135, C130, ...)
-_COMBAT_TYPES   = {"F15","F16","F22","F35","F18","F14","SU35","SU30","MIG29",
-                   "B52","B2","B1",        # بمب‌افکن‌ها
-                   "E3","E8","E767","E737", # هشدار زودهنگام (AWACS)
-                   "RC135","EP3","P8",      # شناسایی الکترونیک
-                   "U2","SR71","RQ4",       # پهپاد/هواپیمای شناسایی ارتفاع بالا
-                   "MQ9","MQ1","TB2","HESA",# پهپادهای مسلح
-                   "A10","AV8","AC130",     # پشتیبانی نزدیک
-                   "EA18","EA6",            # جنگ الکترونیک
-                   }
-_COMBAT_CALLSIGN = ["DOOM","BONE","BUCK","CIAO","JAKE","TORC","GRIM","HAVOC",
-                    "GHOST","VIPER","EAGLE","RAPTOR","DEMON","REAPER","PREDATOR"]
-_ADSB_SEEN    = set()
-
-async def fetch_military_flights(client: httpx.AsyncClient) -> tuple[list, list]:
-    """
-    برمی‌گرداند: (msgs, aircraft_list)
-    aircraft_list: [{"callsign","type","lat","lon","alt","gs","region"}, ...]
-    """
-    global _ADSB_SEEN
-    msgs     = []
-    aircraft = []
-    try:
-        try:
-            if Path(FLIGHT_ALERT_FILE).exists():
-                _ADSB_SEEN = set(json.load(open(FLIGHT_ALERT_FILE)).get("seen", []))
-        except: pass
-
-        for region, r_lat, r_lon, radius in ADSB_REGIONS:
-            try:
-                r = await client.get(f"{ADSB_API}/point/{r_lat}/{r_lon}/{radius}",
-                                     timeout=httpx.Timeout(7.0),
-                                     headers={"Accept": "application/json"})
-                if r.status_code != 200: continue
-                for ac in (r.json().get("ac") or []):
-                    hex_id   = (ac.get("hex") or ac.get("icao","")).upper()
-                    callsign = (ac.get("flight") or ac.get("callsign","")).strip()
-                    cat      = (ac.get("category") or "").upper()
-                    atype    = (ac.get("t") or ac.get("type","")).upper()
-                    ac_lat   = ac.get("lat") or ac.get("latitude")
-                    ac_lon   = ac.get("lon") or ac.get("longitude")
-                    is_combat = (
-                        any(atype.startswith(m) for m in _COMBAT_TYPES)
-                        or any(callsign.startswith(p) for p in _COMBAT_CALLSIGN)
-                        or cat in ("A5", "A6", "A7")  # ICAO military/UAV categories
-                    )
-                    if not is_combat: continue
-                    uid = f"{hex_id}_{callsign}"
-                    if uid in _ADSB_SEEN: continue
-                    _ADSB_SEEN.add(uid)
-                    alt = ac.get("alt_baro") or ac.get("alt", 0)
-                    gs  = ac.get("gs") or ac.get("speed", 0)
-                    msgs.append(
-                        f"✈️ <b>تحرک نظامی — {region}</b>\n"
-                        f"نوع: <code>{atype or '?'}</code>  کال‌ساین: <code>{callsign or hex_id}</code>\n"
-                        f"ارتفاع: {alt:,} ft  سرعت: {gs} kt"
-                    )
-                    if ac_lat and ac_lon:
-                        aircraft.append({
-                            "callsign": callsign or hex_id,
-                            "type":     atype or "?",
-                            "lat":      float(ac_lat),
-                            "lon":      float(ac_lon),
-                            "alt":      alt,
-                            "gs":       gs,
-                            "region":   region,
-                        })
-            except Exception as e:
-                log.debug(f"ADS-B {region}: {e}")
-
-        json.dump({"seen": list(_ADSB_SEEN)[-300:]}, open(FLIGHT_ALERT_FILE, "w"))
-    except Exception as e:
-        log.warning(f"ADS-B: {e}")
-    return msgs, aircraft
-
-
-def make_flight_map(aircraft: list) -> "io.BytesIO | None":
-    """
-    نقشه دقیق خاورمیانه با موقعیت هواپیماهای نظامی
-    مرزهای تقریبی کشورها + شبکه مختصات + برچسب
-    """
-    if not PIL_OK or not aircraft:
-        return None
-    try:
-        W, H    = 1200, 800
-        PAD_L   = 50    # فضای سمت چپ برای درجات
-        PAD_B   = 30    # فضای پایین
-        PAD_T   = 50    # هدر
-        MAP_W   = W - PAD_L
-        MAP_H   = H - PAD_T - PAD_B
-
-        # محدوده جغرافیایی — خاورمیانه کامل
-        LAT_MIN, LAT_MAX =  16.0, 43.0
-        LON_MIN, LON_MAX =  26.0, 65.0
-
-        def gp(lat, lon):
-            """geo to pixel"""
-            x = PAD_L + int((lon - LON_MIN) / (LON_MAX - LON_MIN) * MAP_W)
-            y = PAD_T + int((LAT_MAX - lat) / (LAT_MAX - LAT_MIN) * MAP_H)
-            return max(0, min(W-1, x)), max(0, min(H-1, y))
-
-        # ── رنگ‌ها ─────────────────────────────────────────────────────
-        C_OCEAN  = (8,  28,  52)
-        C_LAND   = (32, 45,  55)
-        C_LAND2  = (38, 52,  62)   # رنگ متفاوت برای تمایز
-        C_BORDER = (80, 110, 140)
-        C_GRID   = (22, 35,  48)
-        C_GRID_L = (40, 58,  72)
-        C_PLANE  = (255, 70,  50)
-        C_PLANE2 = (255, 180, 50)   # هواپیمای دوم
-        C_LABEL  = (210, 230, 250)
-        C_DIM    = (100, 130, 155)
-        C_ACCENT = (255, 160, 30)
-        C_HEAD   = (12,  18,  28)
-
-        img = Image.new("RGB", (W, H), C_OCEAN)
-        drw = ImageDraw.Draw(img)
-
-        # ── فونت ───────────────────────────────────────────────────────
-        try:
-            F14 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-            F12 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
-            F11 = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
-            FB  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15)
-            FBL = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-        except:
-            F14 = F12 = F11 = FB = FBL = ImageFont.load_default()
-
-        # ── شبکه مختصات ───────────────────────────────────────────────
-        for lat in range(17, 44, 2):
-            y = gp(lat, LON_MIN)[1]
-            drw.line([(PAD_L, y), (W, y)], fill=C_GRID, width=1)
-            drw.text((2, y - 7), f"{lat}°", fill=C_DIM, font=F11)
-        for lat in range(20, 44, 5):
-            y = gp(lat, LON_MIN)[1]
-            drw.line([(PAD_L, y), (W, y)], fill=C_GRID_L, width=1)
-
-        for lon in range(28, 65, 2):
-            x = gp(LAT_MIN, lon)[0]
-            drw.line([(x, PAD_T), (x, H - PAD_B)], fill=C_GRID, width=1)
-        for lon in range(30, 65, 5):
-            x = gp(LAT_MIN, lon)[0]
-            drw.line([(x, PAD_T), (x, H - PAD_B)], fill=C_GRID_L, width=1)
-            drw.text((x - 8, H - PAD_B + 5), f"{lon}°", fill=C_DIM, font=F11)
-
-        # ── مرزهای کشورها (پلیگون‌های تقریبی polygon) ─────────────────
-        # فرمت: [(lon, lat), ...] — مختصات جغرافیایی
-        COUNTRIES = {
-            "IRAN": {
-                "color": (38, 52, 62),
-                "pts": [
-                    (44.0,37.0),(44.8,39.2),(45.5,39.6),(46.0,39.0),(47.0,39.5),
-                    (48.0,40.0),(49.0,40.2),(50.0,40.0),(51.0,40.8),(52.0,41.0),
-                    (53.0,41.5),(54.0,41.2),(55.0,41.0),(56.0,40.5),(57.0,40.0),
-                    (58.0,39.5),(59.0,38.0),(60.0,37.0),(61.0,36.5),(61.5,35.0),
-                    (61.0,34.0),(60.5,33.0),(60.0,31.5),(59.5,30.5),(58.5,29.5),
-                    (57.5,28.0),(57.0,27.0),(56.5,27.0),(56.0,27.0),(55.0,26.5),
-                    (54.0,26.5),(53.5,27.0),(53.0,26.5),(52.5,27.0),(52.0,27.0),
-                    (51.5,27.5),(51.0,28.0),(50.5,28.5),(50.0,29.0),(49.5,29.5),
-                    (49.0,30.0),(48.5,30.5),(48.0,31.5),(47.5,32.0),(47.0,33.0),
-                    (46.5,33.5),(46.0,34.0),(45.5,35.0),(45.0,36.0),(44.5,36.5),
-                    (44.0,37.0)
-                ]
-            },
-            "IRAQ": {
-                "color": (36, 50, 60),
-                "pts": [
-                    (38.8,33.4),(39.5,33.8),(40.0,34.2),(41.0,34.7),(42.0,35.2),
-                    (43.0,36.0),(44.0,37.0),(44.5,36.5),(45.0,36.0),(45.5,35.0),
-                    (46.0,34.0),(46.5,33.5),(47.0,33.0),(47.5,32.0),(48.0,31.5),
-                    (48.5,30.5),(47.5,30.0),(47.0,29.5),(46.5,29.2),(46.0,29.0),
-                    (44.7,29.2),(43.5,29.5),(42.0,30.5),(41.0,31.5),(40.0,32.0),
-                    (39.0,32.5),(38.8,33.4)
-                ]
-            },
-            "SYRIA": {
-                "color": (34, 48, 58),
-                "pts": [
-                    (35.7,36.8),(36.0,36.5),(36.5,36.8),(37.0,36.5),(38.0,36.8),
-                    (39.0,36.5),(40.0,36.8),(41.0,37.5),(42.0,37.2),(42.5,37.0),
-                    (43.0,36.0),(42.0,35.2),(41.0,34.7),(40.0,34.2),(39.5,33.8),
-                    (38.8,33.4),(38.0,33.5),(37.5,33.3),(37.0,33.5),(36.5,33.5),
-                    (36.0,33.0),(35.8,33.5),(35.5,34.0),(35.7,35.0),(35.7,36.8)
-                ]
-            },
-            "TURKEY": {
-                "color": (36, 50, 60),
-                "pts": [
-                    (26.0,41.0),(27.0,41.5),(28.0,41.8),(29.0,41.5),(30.0,41.5),
-                    (31.0,41.5),(32.0,42.0),(33.0,42.0),(34.0,42.0),(35.0,42.0),
-                    (36.0,41.5),(37.0,41.5),(38.0,40.5),(39.0,40.5),(40.0,40.5),
-                    (41.0,40.0),(42.0,40.5),(43.0,40.5),(44.0,40.0),(44.5,39.8),
-                    (44.0,39.2),(43.0,38.5),(42.0,38.5),(41.0,38.5),(40.0,38.0),
-                    (39.0,37.5),(38.0,37.0),(37.0,37.0),(36.5,36.8),(36.0,36.5),
-                    (35.7,36.8),(35.5,36.5),(35.0,36.5),(34.5,37.0),(34.0,37.0),
-                    (32.0,37.0),(30.0,36.5),(28.0,37.0),(26.5,38.0),(26.0,39.0),
-                    (26.0,41.0)
-                ]
-            },
-            "SAUDI": {
-                "color": (34, 46, 56),
-                "pts": [
-                    (36.5,29.5),(37.0,29.0),(38.0,28.0),(39.0,27.0),(40.0,26.0),
-                    (41.0,25.0),(42.0,24.5),(43.0,24.0),(44.0,23.5),(45.0,23.0),
-                    (46.0,22.5),(47.0,22.0),(48.0,21.5),(49.0,21.0),(50.0,20.5),
-                    (51.0,20.0),(52.0,19.5),(53.0,19.0),(54.0,18.5),(55.0,18.0),
-                    (56.0,18.5),(56.0,20.0),(55.0,22.0),(54.0,24.0),(53.0,25.0),
-                    (52.0,26.0),(51.0,27.0),(50.5,28.5),(50.0,29.0),(49.5,29.5),
-                    (49.0,30.0),(48.5,30.5),(48.0,31.5),(47.5,32.0),(47.0,31.5),
-                    (46.5,31.0),(46.0,29.0),(44.7,29.2),(43.5,29.5),(42.0,30.5),
-                    (41.0,31.5),(40.0,32.0),(39.0,32.5),(38.8,33.4),(38.0,33.5),
-                    (37.5,32.0),(37.0,31.0),(36.8,30.0),(36.5,29.5)
-                ]
-            },
-            "ISRAEL_PAL": {
-                "color": (40, 55, 68),
-                "pts": [
-                    (34.3,31.3),(34.5,31.0),(34.9,30.0),(35.1,29.5),(35.0,29.0),
-                    (34.8,28.5),(34.5,29.5),(34.0,30.5),(33.8,31.0),(34.0,31.5),
-                    (34.3,31.3)
-                ]
-            },
-            "LEBANON": {
-                "color": (36, 52, 64),
-                "pts": [
-                    (35.1,33.0),(35.7,34.0),(36.5,34.0),(36.6,33.5),(36.0,33.3),
-                    (35.5,33.0),(35.1,33.0)
-                ]
-            },
-            "JORDAN": {
-                "color": (34, 48, 58),
-                "pts": [
-                    (34.9,30.0),(35.0,32.0),(35.5,33.0),(36.0,33.3),(36.5,33.5),
-                    (36.6,33.5),(37.0,33.5),(38.0,33.5),(38.8,33.4),(39.0,32.5),
-                    (39.0,31.5),(38.5,30.5),(37.5,30.0),(36.8,30.0),(36.5,29.5),
-                    (36.0,29.5),(35.5,29.5),(35.2,29.6),(35.1,29.5),(34.9,30.0)
-                ]
-            },
-            "YEMEN": {
-                "color": (32, 45, 54),
-                "pts": [
-                    (42.5,16.5),(43.5,16.0),(44.5,15.5),(45.0,15.0),(45.5,14.5),
-                    (46.0,14.0),(47.0,14.5),(48.0,14.0),(49.0,14.5),(50.0,15.0),
-                    (51.0,16.0),(52.0,17.0),(53.0,17.5),(54.0,17.8),(55.0,17.5),
-                    (55.5,16.5),(55.0,16.0),(54.5,15.5),(53.5,16.0),(52.5,17.0),
-                    (51.5,17.0),(50.5,16.5),(49.5,16.0),(48.5,16.0),(47.5,16.5),
-                    (46.5,17.0),(45.5,17.5),(44.5,17.5),(43.5,17.0),(42.5,16.5)
-                ]
-            },
-            "UAE_OMAN": {
-                "color": (34, 48, 58),
-                "pts": [
-                    (51.5,24.0),(52.5,24.5),(53.0,25.0),(54.0,25.5),(55.0,26.0),
-                    (56.0,26.5),(57.0,27.0),(57.5,22.5),(56.5,22.0),(55.5,22.0),
-                    (55.0,23.0),(54.0,24.0),(53.0,23.5),(52.5,23.5),(51.5,24.0)
-                ]
-            },
-        }
-
-        # رسم کشورها
-        for country, info in COUNTRIES.items():
-            pts_geo = info["pts"]
-            if not pts_geo: continue
-            pts_px = [gp(lat, lon) for lon, lat in pts_geo]
-            drw.polygon(pts_px, fill=info["color"], outline=C_BORDER)
-
-        # ── نام کشورها ─────────────────────────────────────────────────
-        LABELS = [
-            (32.5, 53.0, "IRAN",    C_LABEL),
-            (33.3, 44.4, "IRAQ",    C_DIM),
-            (35.0, 38.5, "SYRIA",   C_DIM),
-            (31.5, 35.0, "ISRAEL",  C_DIM),
-            (25.0, 45.0, "SAUDI",   C_DIM),
-            (24.5, 54.5, "UAE",     C_DIM),
-            (15.5, 48.0, "YEMEN",   C_DIM),
-            (32.0, 36.0, "JORDAN",  C_DIM),
-            (33.5, 36.2, "LEBANON", C_DIM),
-            (39.0, 35.0, "TURKEY",  C_DIM),
-            (26.5, 51.5, "GULF",    (60, 100, 140)),
-        ]
-        for r_lat, r_lon, name, color in LABELS:
-            if LAT_MIN <= r_lat <= LAT_MAX and LON_MIN <= r_lon <= LON_MAX:
-                px, py = gp(r_lat, r_lon)
-                drw.text((px, py), name, fill=color, font=F12)
-
-        # ── خلیج فارس (آبی‌تر) ──────────────────────────────────────
-        gulf_pts = [gp(lat, lon) for lon, lat in [
-            (48.0,30.0),(50.0,29.5),(52.0,28.5),(54.0,27.5),(56.0,27.0),
-            (57.0,26.0),(57.0,25.0),(55.0,24.5),(53.0,24.0),(51.0,24.0),
-            (50.0,24.5),(49.0,25.5),(48.0,27.0),(48.0,30.0)
-        ]]
-        drw.polygon(gulf_pts, fill=(12, 40, 72), outline=None)
-
-        # ── دریای سرخ ───────────────────────────────────────────────
-        red_sea_pts = [gp(lat, lon) for lon, lat in [
-            (32.5,30.0),(33.0,28.0),(34.0,26.0),(35.0,24.0),(36.0,22.0),
-            (37.0,20.0),(38.0,18.0),(39.0,17.5),(40.0,17.0),(43.0,16.0),
-            (43.0,17.0),(41.0,18.5),(40.0,20.0),(39.0,22.0),(38.0,24.0),
-            (37.5,26.0),(37.0,28.0),(36.5,30.0),(32.5,30.0)
-        ]]
-        drw.polygon(red_sea_pts, fill=(10, 36, 65), outline=None)
-
-        # ── دریای مدیترانه ───────────────────────────────────────────
-        med_pts = [gp(lat, lon) for lon, lat in [
-            (26.0,36.5),(30.0,36.0),(32.0,34.5),(34.0,33.0),(35.7,36.8),
-            (34.5,37.0),(32.0,37.0),(30.0,36.5),(28.0,37.0),(26.5,38.0),
-            (26.0,36.5)
-        ]]
-        drw.polygon(med_pts, fill=(10, 36, 65), outline=None)
-
-        # ── هواپیماهای نظامی ──────────────────────────────────────────
-        plane_colors = [C_PLANE, C_PLANE2, (80, 200, 120), (180, 80, 255)]
-        placed = []
-
-        for idx, ac in enumerate(aircraft):
-            lat, lon = ac["lat"], ac["lon"]
-            if not (LAT_MIN <= lat <= LAT_MAX and LON_MIN <= lon <= LON_MAX):
-                continue
-            px, py = gp(lat, lon)
-
-            # جلوگیری از تداخل
-            shift = 0
-            for ppx, ppy in placed:
-                if abs(px - ppx) < 20 and abs(py - ppy) < 20:
-                    py -= 25
-                    break
-            placed.append((px, py))
-
-            pc = plane_colors[idx % len(plane_colors)]
-
-            # دایره پس‌زمینه درخشان
-            drw.ellipse([(px-18, py-18), (px+18, py+18)],
-                        fill=(pc[0]//4, pc[1]//4, pc[2]//4), outline=pc, width=2)
-            # مثلث هواپیما
-            tri = [(px, py-12), (px-8, py+8), (px+8, py+8)]
-            drw.polygon(tri, fill=pc, outline=(255,255,255))
-            # نقطه مرکزی
-            drw.ellipse([(px-3, py-3), (px+3, py+3)], fill=(255,255,255))
-
-            # خط راهنما به برچسب
-            lx = px + 22
-            drw.line([(px+12, py), (lx-2, py)], fill=pc, width=1)
-
-            # برچسب پس‌زمینه
-            label   = f"{ac['callsign']} / {ac['type']}"
-            alt_txt = f"alt:{int(ac['alt'])//1000 if ac['alt'] else '?'}k  {ac['gs']}kt"
-            drw.rectangle([(lx-2, py-14), (lx+170, py+18)],
-                          fill=(12, 18, 28), outline=pc)
-            drw.text((lx+2, py-13), label,   fill=pc,    font=FB)
-            drw.text((lx+2, py+2),  alt_txt, fill=C_DIM, font=F11)
-
-        # ── هدر ─────────────────────────────────────────────────────
-        drw.rectangle([(0, 0), (W, PAD_T - 2)], fill=C_HEAD)
-        drw.rectangle([(0, PAD_T - 2), (W, PAD_T)], fill=C_ACCENT)
-        now_str = datetime.now(TEHRAN_TZ).strftime("%H:%M  %Y/%m/%d")
-        drw.text((10, 8),
-                 f"✈  Military Flights — Middle East  |  {now_str}  |  {len(aircraft)} aircraft tracked",
-                 fill=C_ACCENT, font=FB)
-
-        # ── فوتر ────────────────────────────────────────────────────
-        drw.rectangle([(0, H - PAD_B), (W, H)], fill=C_HEAD)
-        drw.text((10, H - PAD_B + 6), "Source: ADS-B Exchange  |  WarBot v17",
-                 fill=C_DIM, font=F11)
-
-        # ── legend ──────────────────────────────────────────────────
-        lx, ly = W - 200, PAD_T + 10
-        drw.rectangle([(lx-5, ly-5), (W-5, ly + len(aircraft)*22 + 10)],
-                      fill=(10, 15, 25), outline=C_BORDER)
-        for i, ac in enumerate(aircraft):
-            pc = plane_colors[i % len(plane_colors)]
-            drw.rectangle([(lx, ly + i*22), (lx+12, ly + i*22 + 12)], fill=pc)
-            drw.text((lx+16, ly + i*22 - 2),
-                     f"{ac['callsign']} – {ac['region']}", fill=C_LABEL, font=F11)
-
-        buf = io.BytesIO()
-        img.save(buf, "JPEG", quality=90)
-        buf.seek(0)
-        return buf
-
-    except Exception as e:
-        log.warning(f"flight_map error: {e}")
-        import traceback; log.debug(traceback.format_exc())
-        return None
-
-# ══════════════════════════════════════════════════════════════════════════
 # RSS + Telegram fetch
 # ══════════════════════════════════════════════════════════════════════════
 async def fetch_rss(client: httpx.AsyncClient, feed: dict) -> list:
@@ -1038,71 +680,125 @@ async def fetch_rss(client: httpx.AsyncClient, feed: dict) -> list:
 async def fetch_telegram_channel(client: httpx.AsyncClient, label: str,
                                   handle: str, cutoff: datetime) -> list:
     """
-    scrape t.me/s/{handle} — فقط پیام‌های بعد از cutoff
+    scrape t.me/s/{handle} — واکشی پیام‌های کانال‌های عمومی تلگرام
+    از چند User-Agent مختلف استفاده می‌کند تا احتمال موفقیت بالا برود
     """
-    url  = f"https://t.me/s/{handle}"
+    url = f"https://t.me/s/{handle}"
+    # user agents مختلف برای bypass rate limiting
+    ua_list = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+        "TelegramBot (like TwitterBot) 2.0",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0 Safari/537.36",
+    ]
     hdrs = {
-        "User-Agent": "TelegramBot (like TwitterBot)",
-        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "User-Agent": ua_list[hash(handle) % len(ua_list)],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
         "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     }
     try:
-        r = await client.get(url, timeout=httpx.Timeout(TG_TIMEOUT), headers=hdrs)
-        if r.status_code not in (200, 301, 302): return []
-        soup = BeautifulSoup(r.text, "html.parser")
+        r = await client.get(url, timeout=httpx.Timeout(TG_TIMEOUT),
+                             headers=hdrs, follow_redirects=True)
+        if r.status_code not in (200, 301, 302):
+            log.debug(f"TG {handle}: HTTP {r.status_code}")
+            return []
+
+        html = r.text
+        if not html or len(html) < 500:
+            log.debug(f"TG {handle}: empty response")
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # selector اصلی Telegram web
         msgs = soup.select(".tgme_widget_message_wrap")
-        if not msgs: return []
+        if not msgs:
+            # fallback: selector قدیمی‌تر
+            msgs = soup.select(".tgme_widget_message")
+
+        if not msgs:
+            log.debug(f"TG {handle}: no messages found ({len(html)} bytes)")
+            return []
+
         results = []
-        for msg in msgs[-30:]:
-            txt_el = msg.select_one(".tgme_widget_message_text")
-            text   = txt_el.get_text(" ", strip=True) if txt_el else ""
-            if not text or len(text) < 15: continue
-            time_el  = msg.select_one("time")
+        for msg in msgs[-40:]:  # آخرین ۴۰ پیام
+            # متن پیام — چند selector مختلف
+            txt_el = (msg.select_one(".tgme_widget_message_text")
+                      or msg.select_one(".tgme_widget_message_bubble .js-message_text")
+                      or msg.select_one("[data-post]"))
+            text = txt_el.get_text(" ", strip=True) if txt_el else ""
+
+            # پاکسازی whitespace زیاد
+            text = re.sub(r'\s+', ' ', text).strip()
+            if not text or len(text) < 10:
+                continue
+
+            # زمان پیام
+            time_el  = msg.select_one("time[datetime]")
             dt_str   = time_el.get("datetime", "") if time_el else ""
             entry_dt = None
             if dt_str:
-                try: entry_dt = datetime.fromisoformat(dt_str.replace("Z","+00:00"))
-                except: pass
-            # فقط پیام‌های تازه‌تر از cutoff
-            if entry_dt and entry_dt < cutoff: continue
-            link_el = msg.select_one("a.tgme_widget_message_date")
-            link    = link_el.get("href","") if link_el else f"https://t.me/{handle}"
+                try:
+                    entry_dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                except Exception:
+                    pass
+
+            # فیلتر زمانی
+            if entry_dt and entry_dt < cutoff:
+                continue
+
+            # لینک پیام
+            link_el = (msg.select_one("a.tgme_widget_message_date")
+                       or msg.select_one("a[href*='t.me']"))
+            link = link_el.get("href", "") if link_el else f"https://t.me/{handle}"
+
+            # عنوان = اولین جمله متن
+            first_line = text.split('\n')[0][:300].strip()
+            title = first_line if first_line else text[:200]
+
             results.append(({
-                "title":   text[:300],
-                "summary": text[:800],
+                "title":   title,
+                "summary": text[:1000],
                 "link":    link,
                 "_tg_dt":  entry_dt,
             }, label, "tg", False))
+
+        log.debug(f"TG {handle}: {len(results)} messages")
         return results
+
     except Exception as e:
-        log.debug(f"TG {handle}: {e}"); return []
+        log.debug(f"TG {handle}: {e}")
+        return []
 
 async def fetch_all(client: httpx.AsyncClient, cutoff: datetime) -> list:
     """
-    واکشی موازی همه منابع
-    cutoff برای Telegram پاس داده می‌شه (RSS از is_fresh در main فیلتر می‌شه)
+    واکشی موازی همه منابع — ترتیب: Twitter اول، سپس Telegram، سپس RSS
+    Twitter اول چون breaking news سریع‌تر در X منتشر می‌شود
     """
     await build_twitter_pools(client)
 
-    rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
-    tg_t  = [fetch_telegram_channel(client, l, h, cutoff) for l, h in TELEGRAM_CHANNELS]
     tw_t  = [fetch_twitter(client, l, h) for l, h in TWITTER_HANDLES]
+    tg_t  = [fetch_telegram_channel(client, l, h, cutoff) for l, h in TELEGRAM_CHANNELS]
+    rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
 
-    all_res = await asyncio.gather(*rss_t, *tg_t, *tw_t, return_exceptions=True)
+    # همه موازی اجرا می‌شوند اما نتایج به ترتیب: TW → TG → RSS
+    all_res = await asyncio.gather(*tw_t, *tg_t, *rss_t, return_exceptions=True)
 
-    out = []; rss_ok = tg_ok = tw_ok = 0
-    n_rss = len(ALL_RSS_FEEDS); n_tg = len(TELEGRAM_CHANNELS)
+    out = []; tw_ok = tg_ok = rss_ok = 0
+    n_tw  = len(TWITTER_HANDLES)
+    n_tg  = len(TELEGRAM_CHANNELS)
     for i, res in enumerate(all_res):
         if not isinstance(res, list): continue
         out.extend(res)
-        if   i < n_rss:          rss_ok += bool(res)
-        elif i < n_rss + n_tg:   tg_ok  += bool(res)
-        else:                     tw_ok  += bool(res)
+        if   i < n_tw:             tw_ok  += bool(res)
+        elif i < n_tw + n_tg:      tg_ok  += bool(res)
+        else:                       rss_ok += bool(res)
 
-    log.info(f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)} "
-             f" 📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)} "
-             f" 𝕏:{tw_ok}/{len(TWITTER_HANDLES)}")
+    log.info(f"  𝕏:{tw_ok}/{len(TWITTER_HANDLES)}"
+             f"  📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)}"
+             f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)}")
     return out
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1837,10 +1533,8 @@ async def _run_cycle(client: httpx.AsyncClient,
     save_run_state()
 
     # ── fetch موازی ──────────────────────────────────────────────────────
-    flight_task = asyncio.create_task(fetch_military_flights(client))
-    raw_task    = asyncio.create_task(fetch_all(client, cutoff))
-    (flight_msgs, flight_aircraft), raw = await asyncio.gather(flight_task, raw_task)
-    log.info(f"  📥 {len(raw)} خام  ✈️ {len(flight_aircraft)} جنگنده")
+    raw = await fetch_all(client, cutoff)
+    log.info(f"  📥 {len(raw)} آیتم خام")
 
     # ── پردازش ───────────────────────────────────────────────────────────
     collected = []
@@ -1862,26 +1556,6 @@ async def _run_cycle(client: httpx.AsyncClient,
     log.info(f"  📊 قدیمی:{cnt_old} نامرتبط:{cnt_irrel} dup:{cnt_dup} story:{cnt_story} ✅{len(collected)}")
 
     collected = list(reversed(collected))[:MAX_NEW_PER_RUN]
-
-    # ── هواپیماهای جنگی ──────────────────────────────────────────────────
-    if flight_aircraft:
-        map_buf = make_flight_map(flight_aircraft)
-        if map_buf:
-            regions = set(a["region"] for a in flight_aircraft)
-            cap = [f"✈️ <b>تحرکات هوایی نظامی — {' | '.join(regions)}</b>"]
-            for ac in flight_aircraft[:8]:
-                cap.append(f"• <code>{ac['callsign']}</code> ({ac['type']}) "
-                           f"alt:{int(ac['alt'])//1000 if ac['alt'] else '?'}k  "
-                           f"{ac['gs']}kt — {ac['region']}")
-            cap.append(f"\n🕐 {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
-            await tg_send_photo(client, map_buf, "\n".join(cap))
-            await asyncio.sleep(0.8)
-        else:
-            for msg in flight_msgs[:4]:
-                await tg_send_text(client, msg); await asyncio.sleep(0.5)
-    elif flight_msgs:
-        for msg in flight_msgs[:2]:
-            await tg_send_text(client, msg); await asyncio.sleep(0.5)
 
     if not collected:
         log.info("  💤 خبر جدیدی نیست")
@@ -1966,7 +1640,7 @@ async def main():
 
     mode = "GitHub CI" if _CI else "محلی — بی‌نهایت"
     log.info("=" * 70)
-    log.info(f"🚀 WarBot v19 | {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران %Y/%m/%d')}")
+    log.info(f"🚀 WarBot v20 | {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران %Y/%m/%d')}")
     log.info(f"   mode={mode}  max={BOT_MAX_RUNTIME_MIN}min  interval={LOOP_INTERVAL_SEC}s")
     log.info(f"   📡 {len(ALL_RSS_FEEDS)} RSS  📢 {len(TELEGRAM_CHANNELS)} TG  𝕏 {len(TWITTER_HANDLES)} TW")
     log.info(f"   seen:{len(seen)}  stories:{len(stories)}  PIL:{'✅' if PIL_OK else '❌'}")
