@@ -1,23 +1,34 @@
-name: 🛡️ Iran-USA-Israel War Bot v18
+name: 🛡️ WarBot v19 — Iran/USA/Israel (پیوسته ۶ ساعت)
 
 on:
   schedule:
-    # GitHub Actions minimum = */5 — کمتر از ۵ دقیقه اجرا نمی‌شود
-    # در عمل هر ۵-۱۰ دقیقه اجرا می‌شود (با تأخیر احتمالی GitHub)
-    - cron: '*/5 * * * *'
+    # هر ۶ ساعت یک بار اجرا می‌شود — bot خودش داخل ۳۵۰ دقیقه loop می‌زند
+    # نتیجه: پوشش ۲۴/۷ بدون وقفه
+    - cron: '0 */6 * * *'
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual run'
+        required: false
+        default: 'manual'
 
-# جلوگیری از اجرای موازی — اگه run قبلی هنوز تمام نشده منتظر بماند
+# فقط یک instance در هر لحظه — اجرای موازی ممنوع
 concurrency:
-  group: warbot-run
+  group: warbot-single
   cancel-in-progress: false
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 8    # افزایش از ۴ به ۸ دقیقه — برای ترجمه و fetch تصویر
+    timeout-minutes: 360     # ۶ ساعت — bot بعد از ۳۵۰ دقیقه خودش خارج می‌شود
     permissions:
       contents: write
+
+    env:
+      BOT_TOKEN:      ${{ secrets.BOT_TOKEN }}
+      CHANNEL_ID:     ${{ secrets.CHANNEL_ID }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CI: "true"
 
     steps:
       - name: Checkout
@@ -35,25 +46,20 @@ jobs:
         run: |
           pip install --quiet \
             feedparser \
-            httpx \
-            "httpx[http2]" \
+            httpx "httpx[http2]" \
             beautifulsoup4 \
             pytz \
             lxml \
             hazm \
             "Pillow>=9.0.0"
 
-      - name: Run War Bot
-        env:
-          BOT_TOKEN:      ${{ secrets.BOT_TOKEN }}
-          CHANNEL_ID:     ${{ secrets.CHANNEL_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Run WarBot (پیوسته - هر ۴۵ ثانیه یک چرخه)
         run: python bot.py
 
-      - name: Commit state files
+      - name: Save state files
         if: always()
         run: |
-          git config --global user.name "github-actions[bot]"
+          git config --global user.name  "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add \
             seen.json \
