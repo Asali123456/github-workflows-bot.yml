@@ -40,10 +40,10 @@ NITTER_CACHE_FILE = "nitter_cache.json"
 # ── زمان‌بندی و حلقه دائمی ─────────────────────────────────────────────────
 CUTOFF_BUFFER_MIN  = 4    # overlap — چند دقیقه قبل از آخرین اجرا نگاه کن
 MAX_LOOKBACK_MIN   = 90   # حداکثر برگشت (برای اولین اجرا / crash)
-SEEN_TTL_HOURS     = 12
+SEEN_TTL_HOURS     = 6
 NITTER_CACHE_TTL   = 900
 
-LOOP_INTERVAL_SEC  = 45   # هر ۴۵ ثانیه یک چرخه — ارسال فوری هر خبر جدید
+LOOP_INTERVAL_SEC  = 60   # هر ۶۰ ثانیه — کافی برای fetch همه منابع
 # در GitHub Actions: bot را ۳۵۰ دقیقه اجرا کن، Actions هر ۶ ساعت restart می‌کند
 # برای اجرای محلی (CI=False): بی‌نهایت
 _CI = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
@@ -52,8 +52,8 @@ BOT_MAX_RUNTIME_MIN = 350 if _CI else 99999
 MAX_NEW_PER_RUN    = 50   # هر چرخه حداکثر ۵۰ خبر
 MAX_MSG_LEN        = 4096
 SEND_DELAY         = 0.3
-JACCARD_THRESHOLD  = 0.78  # dedup دقیق‌تر
-MAX_STORIES        = 300   # حافظه بیشتر = تکراری کمتر
+JACCARD_THRESHOLD  = 0.62  # آزاد — فقط خبرهای تقریباً یکسان رد شوند
+MAX_STORIES        = 150   # کمتر = dedup محدودتر = خبر بیشتر
 RSS_TIMEOUT        = 8.0
 TG_TIMEOUT         = 10.0
 TW_TIMEOUT         = 6.0
@@ -221,8 +221,10 @@ TELEGRAM_CHANNELS = [
     ("🇮🇷 مهر فارسی",             "mehrnews_fa"),
     ("🇮🇷 ایرنا فارسی",           "irnafarsi"),
     ("🇮🇷 Press TV",              "PressTVnews"),
+    ("🇮🇷 ایکس‌نیوز فارسی",         "FarsiOfficialx"),
+    ("🇮🇷 BBC PERSIAN",              "bbcpersian"),
     # اسراییل
-    ("🇮🇱 Kann News",            "kann_news"),
+    ("🇮🇱 Kann News",            "israelhayomofficial"),
     ("🇮🇱 Times of Israel",      "timesofisrael"),
     # منطقه
     ("🇸🇦 Al Arabiya Breaking",  "AlArabiya_Brk"),
@@ -317,6 +319,8 @@ USA_KW = [
 
 # ─── اسراییل — رهبری + نظامی ۲۰۲۶ ────────────────────────────────────────
 ISRAEL_KW = [
+    # کلمات پایه
+    "israel","israeli",
     # رهبری
     "netanyahu","benjamin netanyahu","pm netanyahu",
     "eyal zamir","idf chief zamir",
@@ -338,25 +342,28 @@ ISRAEL_KW = [
 
 # ─── پروکسی‌ها + میانجیان ۲۰۲۶ ───────────────────────────────────────────
 PROXY_KW = [
-    # پروکسی‌های ایران
-    "hezbollah iran","hezbollah missile","hezbollah attack",
-    "hamas iran","hamas attack","hamas weapons",
-    "houthi iran","houthi missile","ansar allah attack",
-    "houthi red sea","houthi ship attack","houthi drone",
-    "kataib hezbollah","pij attack","islamic jihad iran",
-    "حزب‌الله لبنان","موشک حزب‌الله","حماس ایران","حوثی یمن",
-    "حوثی دریای سرخ","انصارالله","جهاد اسلامی","کتائب حزب‌الله",
-    # میانجیان هسته‌ای (مهم برای بحران ۲۰۲۶)
-    "oman iran talks","badr al-busaidi iran","al-busaidi",
-    "rafael grossi iran","grossi iran","iaea iran",
-    "iran iaea inspection","iran iaea deal",
-    "turkey iran mediation","erdogan iran",
-    "عمان مذاکرات","گروسی ایران","آژانس اتمی ایران",
-    "بازرسی آژانس","توافق آژانس","مذاکرات عمان",
+    # پروکسی‌های ایران — کلمات ساده (مهم: باید match کنند)
+    "houthi","ansar allah","hamas","hezbollah","kataib",
+    "pij","islamic jihad","popular mobilization",
+    "حوثی","انصارالله","حماس","حزب‌الله","کتائب","جهاد اسلامی",
+    # عبارات مرکب
+    "houthi attack","houthi missile","houthi drone","houthi red sea",
+    "houthi ship","hezbollah attack","hezbollah missile","hamas attack",
+    "حوثی دریای سرخ","حوثی موشک","حمله حماس","حمله حزب‌الله",
+    # میانجیان هسته‌ای ۲۰۲۶
+    "badr al-busaidi","al-busaidi","grossi","iaea iran",
+    "iran iaea","iran nuclear inspection","iran iaea deal",
+    "oman mediation","عمان مذاکرات","گروسی","آژانس اتمی ایران",
+    "بازرسی آژانس","مذاکرات عمان",
 ]
 
 # ─── موضوعات بحران ۲۰۲۶ — برای AND logic با "ایران/iran" ─────────────────
 WAR_CONTEXT_KW = [
+    # کلمات پایه جنگی — با ایران/اسراییل/آمریکا → pass
+    "war","attack","strike","airstrike","bombing","nuclear",
+    "military","missile","weapon","threat","conflict","crisis",
+    "sanction","invasion","escalation","retaliation","offensive",
+    "جنگ","حمله","ضربه","هسته","نظامی","موشک","تهدید","بحران","تحریم",
     # مذاکرات هسته‌ای فعال (بحران جاری فوریه ۲۰۲۶)
     "geneva talks iran","vienna talks iran","nuclear framework iran",
     "iran nuclear agreement","iran deal framework",
@@ -389,7 +396,7 @@ HARD_EXCLUDE = [
     "olympic games","marathon race","tennis tournament","golf tournament",
     "فوتبال","بسکتبال","والیبال","کشتی","المپیک","لیگ برتر",
     # سرگرمی/فرهنگ
-    "box office","grammy awards","oscar ceremony","film festival",
+    "box office","grammy","grammy awards","oscar","oscar ceremony","film festival",
     "music video","celebrity news","reality show","fashion week",
     "سینما","موسیقی","جوایز فیلم","فشن","سریال",
     # اقتصاد داخلی بی‌ربط
@@ -417,59 +424,80 @@ EMBASSY_OVERRIDE = [
 # ─── فیلتر اصلی با منطق AND برای ایران ────────────────────────────────────
 def is_war_relevant(text: str, is_embassy=False, is_tg=False, is_tw=False) -> bool:
     """
-    فیلتر دقیق ۲۰۲۶ — فقط جنگ و تنش ایران/آمریکا/اسراییل
+    فیلتر ۲۰۲۶ — آگاه به منبع:
 
-    منطق:
-    - ایران + موضوع نظامی/هسته‌ای → pass  (IRAN_MILITARY_KW)
-    - ایران + آمریکا → pass
-    - ایران + اسراییل → pass
-    - ایران + موضوع جنگی → pass  (WAR_CONTEXT_KW)
-    - آمریکا + اسراییل → pass
-    - آمریکا + موضوع جنگی → pass
-    - پروکسی (حماس/حوثی/حزب‌الله) → pass
-    - ایران به تنهایی → REJECT (خبر داخلی)
+    Twitter/Telegram = منابع curated اختصاصی جنگ:
+      → فقط HARD_EXCLUDE رد می‌شود، بقیه pass
+
+    RSS = منابع عمومی (شامل اخبار داخلی ایران):
+      → فیلتر AND: باید ایران + طرف مقابل/موضوع جنگی باشد
+      → اخبار صرفاً داخلی ایران رد می‌شوند
     """
     txt = text.lower()
 
-    # ۱. حذف قطعی
+    # ── حذف قطعی (همه منابع) ─────────────────────────────────────────────
     if any(k in txt for k in HARD_EXCLUDE):
         return False
 
-    # ۲. سفارت + هشدار فوری → pass
+    # ── سفارت + هشدار فوری ───────────────────────────────────────────────
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
         return True
 
-    # ۳. بررسی حضور هر گروه
+    # ── Twitter/Telegram: منابع curated — فیلتر سبک ─────────────────────
+    # این اکانت‌ها خودشان فقط اخبار جنگ پوست می‌دهند
+    # فقط بررسی می‌کنیم که حداقل یک کلمه مرتبط داشته باشد
+    if is_tw or is_tg:
+        has_any = (
+            any(k in txt for k in IRAN_MILITARY_KW) or
+            any(k in txt for k in USA_KW) or
+            any(k in txt for k in ISRAEL_KW) or
+            any(k in txt for k in PROXY_KW) or
+            any(k in txt for k in WAR_CONTEXT_KW) or
+            "iran" in txt or "iranian" in txt or "ایران" in txt or
+            "irgc" in txt or "sepah" in txt or "سپاه" in txt or
+            "tehran" in txt or "تهران" in txt or
+            "israel" in txt or "اسراییل" in txt or
+            "nuclear" in txt or "هسته" in txt or
+            "missile" in txt or "موشک" in txt or
+            "trump" in txt or "ترامپ" in txt or
+            "netanyahu" in txt or "نتانیاهو" in txt or
+            "war" in txt or "attack" in txt or "strike" in txt or
+            "حمله" in txt or "جنگ" in txt
+        )
+        return has_any
+
+    # ── RSS: فیلتر AND — جلوگیری از اخبار کاملاً داخلی ایران ─────────────
     has_iran_mil  = any(k in txt for k in IRAN_MILITARY_KW)
     has_iran_name = ("iran" in txt or "iranian" in txt or "ایران" in txt
                      or "تهران" in txt or "خامنه" in txt or "پزشکیان" in txt
-                     or "عراقچی" in txt or "irgc" in txt or "tehran" in txt)
+                     or "عراقچی" in txt or "irgc" in txt or "tehran" in txt
+                     or "سپاه" in txt or "نطنز" in txt or "فردو" in txt)
     has_usa       = any(k in txt for k in USA_KW)
     has_israel    = any(k in txt for k in ISRAEL_KW)
     has_war_ctx   = any(k in txt for k in WAR_CONTEXT_KW)
     has_proxy     = any(k in txt for k in PROXY_KW)
 
-    # ۴. موضوعات نظامی/هسته‌ای ایران → همیشه pass
+    # موضوعات نظامی/هسته‌ای ایران → همیشه pass
     if has_iran_mil:
         return True
 
-    # ۵. ایران + طرف مقابل یا موضوع جنگ → pass
-    if has_iran_name and (has_usa or has_israel or has_war_ctx):
-        return True
-
-    # ۶. آمریکا + اسراییل → pass (خبر مرتبط با منطقه)
-    if has_usa and has_israel:
-        return True
-
-    # ۷. آمریکا + موضوع جنگی → pass
-    if has_usa and has_war_ctx:
-        return True
-
-    # ۸. پروکسی → pass (حوثی/حماس/حزب‌الله همیشه مرتبط)
+    # پروکسی → pass (حوثی/حماس/حزب‌الله)
     if has_proxy:
         return True
 
-    # ۹. ایران به تنهایی بدون موضوع جنگی → REJECT
+    # ایران + طرف مقابل یا موضوع جنگ → pass
+    if has_iran_name and (has_usa or has_israel or has_war_ctx):
+        return True
+
+    # آمریکا + اسراییل → pass
+    if has_usa and has_israel:
+        return True
+
+    # آمریکا یا اسراییل + موضوع جنگی → pass
+    if (has_usa or has_israel) and has_war_ctx:
+        return True
+
+    # ایران به تنهایی بدون موضوع جنگی → REJECT (تورم/ترافیک/بودجه داخلی)
     return False
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -779,26 +807,27 @@ async def fetch_all(client: httpx.AsyncClient, cutoff: datetime) -> list:
     """
     await build_twitter_pools(client)
 
+    # ترتیب ارسال: Twitter اول → RSS → Telegram
+    # (همه موازی fetch می‌شوند ولی نتایج به این ترتیب پردازش می‌شوند)
     tw_t  = [fetch_twitter(client, l, h) for l, h in TWITTER_HANDLES]
-    tg_t  = [fetch_telegram_channel(client, l, h, cutoff) for l, h in TELEGRAM_CHANNELS]
     rss_t = [fetch_rss(client, f) for f in ALL_RSS_FEEDS]
+    tg_t  = [fetch_telegram_channel(client, l, h, cutoff) for l, h in TELEGRAM_CHANNELS]
 
-    # همه موازی اجرا می‌شوند اما نتایج به ترتیب: TW → TG → RSS
-    all_res = await asyncio.gather(*tw_t, *tg_t, *rss_t, return_exceptions=True)
+    all_res = await asyncio.gather(*tw_t, *rss_t, *tg_t, return_exceptions=True)
 
-    out = []; tw_ok = tg_ok = rss_ok = 0
+    out = []; tw_ok = rss_ok = tg_ok = 0
     n_tw  = len(TWITTER_HANDLES)
-    n_tg  = len(TELEGRAM_CHANNELS)
+    n_rss = len(ALL_RSS_FEEDS)
     for i, res in enumerate(all_res):
         if not isinstance(res, list): continue
         out.extend(res)
-        if   i < n_tw:             tw_ok  += bool(res)
-        elif i < n_tw + n_tg:      tg_ok  += bool(res)
-        else:                       rss_ok += bool(res)
+        if   i < n_tw:              tw_ok  += bool(res)
+        elif i < n_tw + n_rss:      rss_ok += bool(res)
+        else:                        tg_ok  += bool(res)
 
     log.info(f"  𝕏:{tw_ok}/{len(TWITTER_HANDLES)}"
-             f"  📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)}"
-             f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)}")
+             f"  📡 RSS:{rss_ok}/{len(ALL_RSS_FEEDS)}"
+             f"  📢 TG:{tg_ok}/{len(TELEGRAM_CHANNELS)}")
     return out
 
 # ══════════════════════════════════════════════════════════════════════════
