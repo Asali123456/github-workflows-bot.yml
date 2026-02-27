@@ -38,93 +38,111 @@ FLIGHT_ALERT_FILE = "flight_alerts.json"
 RUN_STATE_FILE    = "run_state.json"
 NITTER_CACHE_FILE = "nitter_cache.json"
 
-# ── زمان‌بندی ─────────────────────────────────────────────────────────────
-CUTOFF_BUFFER_MIN  = 5    # overlap برای جلوگیری از miss (۵ دقیقه قبل از last_run)
-MAX_LOOKBACK_MIN   = 90   # حداکثر برگشت — GitHub Actions می‌تواند ۳۰-۶۰ دقیقه تأخیر داشته باشد
-SEEN_TTL_HOURS     = 8    # seen.json بیشتر نگه می‌داره
+# ── زمان‌بندی و حلقه دائمی ─────────────────────────────────────────────────
+CUTOFF_BUFFER_MIN  = 4    # overlap — چند دقیقه قبل از آخرین اجرا نگاه کن
+MAX_LOOKBACK_MIN   = 90   # حداکثر برگشت (برای اولین اجرا / crash)
+SEEN_TTL_HOURS     = 12
 NITTER_CACHE_TTL   = 900
 
-MAX_NEW_PER_RUN    = 40   # بیشتر برای جبران تأخیر GitHub
+LOOP_INTERVAL_SEC  = 45   # هر ۴۵ ثانیه یک چرخه — ارسال فوری هر خبر جدید
+# در GitHub Actions: bot را ۳۵۰ دقیقه اجرا کن، Actions هر ۶ ساعت restart می‌کند
+# برای اجرای محلی (CI=False): بی‌نهایت
+_CI = bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"))
+BOT_MAX_RUNTIME_MIN = 350 if _CI else 99999
+
+MAX_NEW_PER_RUN    = 50   # هر چرخه حداکثر ۵۰ خبر
 MAX_MSG_LEN        = 4096
-SEND_DELAY         = 0.4
-JACCARD_THRESHOLD  = 0.75  # فقط خبرهای تقریباً یکسان حذف شوند
-MAX_STORIES        = 200   # حافظه بیشتر برای dedup صحیح
+SEND_DELAY         = 0.3
+JACCARD_THRESHOLD  = 0.78  # dedup دقیق‌تر
+MAX_STORIES        = 300   # حافظه بیشتر = تکراری کمتر
 RSS_TIMEOUT        = 8.0
 TG_TIMEOUT         = 10.0
 TW_TIMEOUT         = 6.0
-RICH_CARD_THRESHOLD = 7
+RICH_CARD_THRESHOLD = 5
 
 TEHRAN_TZ = pytz.timezone("Asia/Tehran")
 
 # ══════════════════════════════════════════════════════════════════════════
-# منابع RSS
+# منابع RSS — Feb 27 2026 — مذاکرات ژنو دور سوم / آستانه جنگ
 # ══════════════════════════════════════════════════════════════════════════
+
 IRAN_FEEDS = [
-    {"n":"🇮🇷 IRNA English",       "u":"https://en.irna.ir/rss"},
-    {"n":"🇮🇷 Mehr News EN",        "u":"https://en.mehrnews.com/rss"},
-    {"n":"🇮🇷 Tasnim News EN",      "u":"https://www.tasnimnews.com/en/rss/feed/0/8/0"},
-    {"n":"🇮🇷 Fars News EN",        "u":"https://www.farsnews.ir/rss"},
-    {"n":"🇮🇷 Press TV",            "u":"https://www.presstv.ir/rss"},
-    {"n":"🇮🇷 ISNA English",        "u":"https://en.isna.ir/rss"},
-    {"n":"🇮🇷 Tehran Times",        "u":"https://www.tehrantimes.com/rss"},
-    {"n":"🇮🇷 Iran International", "u":"https://www.iranintl.com/en/rss"},
-    {"n":"🇮🇷 Iran Wire EN",        "u":"https://iranwire.com/en/feed/"},
-    {"n":"🇮🇷 Radio Farda EN",      "u":"https://en.radiofarda.com/api/zqpqetrruqo"},
-    {"n":"🇮🇷 خبرگزاری تسنیم",      "u":"https://www.tasnimnews.com/fa/rss/feed/0/8/0"},
-    {"n":"🇮🇷 خبرگزاری مهر",         "u":"https://www.mehrnews.com/rss"},
-    {"n":"🇮🇷 خبرگزاری ایرنا",       "u":"https://www.irna.ir/rss"},
-    {"n":"🇮🇷 خبرگزاری فارس",        "u":"https://www.farsnews.ir/rss/fa"},
-    {"n":"🇮🇷 مشرق نیوز",             "u":"https://www.mashreghnews.ir/rss"},
-    {"n":"🇮🇷 دفاع پرس",             "u":"https://www.defapress.ir/fa/rss"},
-    {"n":"🇮🇷 YJC خبرگزاری",         "u":"https://www.yjc.ir/fa/rss/allnews"},
-    # Google News — جست‌وجوهای دقیق
-    {"n":"📰 GNews Iran War",      "u":"https://news.google.com/rss/search?q=Iran+war+attack+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews IRGC",          "u":"https://news.google.com/rss/search?q=IRGC+Iran+Israel+US+military&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews ایران حمله",     "u":"https://news.google.com/rss/search?q=ایران+حمله+موشک+اسراییل+آمریکا&hl=fa&gl=IR&ceid=IR:fa&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews سپاه",          "u":"https://news.google.com/rss/search?q=سپاه+پاسداران+عملیات&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
+    # ─── فارسی ─────────────────────────────────────────────────────────
+    {"n":"🇮🇷 ایرنا",          "u":"https://www.irna.ir/rss"},
+    {"n":"🇮🇷 تسنیم",         "u":"https://www.tasnimnews.com/fa/rss/feed/0/8/0"},
+    {"n":"🇮🇷 مهر",           "u":"https://www.mehrnews.com/rss"},
+    {"n":"🇮🇷 فارس",          "u":"https://www.farsnews.ir/rss/fa"},
+    {"n":"🇮🇷 مشرق",          "u":"https://www.mashreghnews.ir/rss"},
+    {"n":"🇮🇷 دفاع پرس",      "u":"https://www.defapress.ir/fa/rss"},
+    {"n":"🇮🇷 YJC",           "u":"https://www.yjc.ir/fa/rss/allnews"},
+    # ─── انگلیسی ───────────────────────────────────────────────────────
+    {"n":"🇮🇷 IRNA EN",       "u":"https://en.irna.ir/rss"},
+    {"n":"🇮🇷 Mehr EN",       "u":"https://en.mehrnews.com/rss"},
+    {"n":"🇮🇷 Tasnim EN",     "u":"https://www.tasnimnews.com/en/rss/feed/0/8/0"},
+    {"n":"🇮🇷 Press TV",      "u":"https://www.presstv.ir/rss"},
+    {"n":"🇮🇷 Tehran Times",  "u":"https://www.tehrantimes.com/rss"},
+    {"n":"🇮🇷 Iran Intl EN",  "u":"https://www.iranintl.com/en/rss"},
+    {"n":"🇮🇷 Iran Wire",     "u":"https://iranwire.com/en/feed/"},
+    {"n":"🇮🇷 Radio Farda",   "u":"https://en.radiofarda.com/api/zqpqetrruqo"},
+    # ─── Google News فارسی — امروز ─────────────────────────────────────
+    {"n":"📰 GN ژنو امروز",   "u":"https://news.google.com/rss/search?q=ایران+مذاکرات+ژنو+عراقچی+ویتکوف&hl=fa&gl=IR&ceid=IR:fa&num=15&tbs=qdr:d"},
+    {"n":"📰 GN سپاه امروز",  "u":"https://news.google.com/rss/search?q=سپاه+پاسداران+حمله+موشک+هسته‌ای&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
+    {"n":"📰 GN اعتراض ایران","u":"https://news.google.com/rss/search?q=اعتراضات+ایران+سرکوب+خامنه‌ای+۱۴۰۴&hl=fa&gl=IR&ceid=IR:fa&num=10&tbs=qdr:d"},
 ]
+
 ISRAEL_FEEDS = [
-    # ❌ jpost.com/rss/rssfeedsheadlines.aspx قدیمی بود — آدرس صحیح:
-    {"n":"🇮🇱 Jerusalem Post",       "u":"https://rss.jpost.com/rss/rssfeedsheadlines"},
-    {"n":"🇮🇱 Times of Israel",      "u":"https://www.timesofisrael.com/feed/"},
-    {"n":"🇮🇱 Haaretz EN",           "u":"https://www.haaretz.com/srv/haaretz-latest-articles.rss"},
-    {"n":"🇮🇱 Israel Hayom EN",      "u":"https://www.israelhayom.com/feed/"},
-    {"n":"🇮🇱 Arutz Sheva",          "u":"https://www.israelnationalnews.com/rss.aspx"},
-    {"n":"🇮🇱 i24 News",             "u":"https://www.i24news.tv/en/rss"},
-    {"n":"📰 GNews Israel Iran",    "u":"https://news.google.com/rss/search?q=Israel+Iran+attack+strike&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews IDF",            "u":"https://news.google.com/rss/search?q=IDF+military+operation+Iran&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews Iron Dome",      "u":"https://news.google.com/rss/search?q=Iron+Dome+Arrow+missile+defense&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"🇮🇱 Times of Israel","u":"https://www.timesofisrael.com/feed/"},
+    {"n":"🇮🇱 Jerusalem Post", "u":"https://rss.jpost.com/rss/rssfeedsheadlines"},
+    {"n":"🇮🇱 Haaretz EN",     "u":"https://www.haaretz.com/srv/haaretz-latest-articles.rss"},
+    {"n":"🇮🇱 Israel Hayom",   "u":"https://www.israelhayom.com/feed/"},
+    {"n":"🇮🇱 i24 News",       "u":"https://www.i24news.tv/en/rss"},
+    # ─── Google News انگلیسی ────────────────────────────────────────────
+    {"n":"📰 GN Netanyahu",   "u":"https://news.google.com/rss/search?q=Netanyahu+Iran+nuclear+deal+war+2026&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GN IDF Iran",    "u":"https://news.google.com/rss/search?q=IDF+Israel+Iran+strike+military&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
+
 USA_FEEDS = [
-    # ❌ feeds.reuters.com — از ژوئن ۲۰۲۰ متوقف شده، حذف شد
-    # ❌ feeds.apnews.com/rss/apf-WorldNews — قدیمی، جایگزین شد
-    {"n":"🇺🇸 AP World",             "u":"https://apnews.com/hub/world-news.rss"},
-    {"n":"🇺🇸 AP Middle East",       "u":"https://apnews.com/hub/middle-east.rss"},
-    {"n":"🇺🇸 CNN Middle East",      "u":"http://rss.cnn.com/rss/edition_meast.rss"},
-    {"n":"🇺🇸 NBC World News",       "u":"https://feeds.nbcnews.com/feeds/worldnews"},
-    {"n":"🇺🇸 USNI News",            "u":"https://news.usni.org/feed"},
-    {"n":"🇺🇸 Breaking Defense",     "u":"https://breakingdefense.com/feed/"},
-    {"n":"🇺🇸 The War Zone",         "u":"https://www.twz.com/feed"},
-    {"n":"🇺🇸 Defense News",         "u":"https://www.defensenews.com/arc/outboundfeeds/rss/"},
-    {"n":"🇺🇸 Military Times",       "u":"https://www.militarytimes.com/arc/outboundfeeds/rss/"},
-    {"n":"🇺🇸 Long War Journal",     "u":"https://www.longwarjournal.org/feed"},
-    {"n":"📰 GNews US Iran",        "u":"https://news.google.com/rss/search?q=US+military+Iran+strike+sanction&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
-    {"n":"📰 GNews CENTCOM",        "u":"https://news.google.com/rss/search?q=CENTCOM+Middle+East+military+operation&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
-    {"n":"📰 GNews Houthi",         "u":"https://news.google.com/rss/search?q=Houthi+Iran+Red+Sea+US+Navy&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
-    {"n":"⚠️ GNews Nuclear",         "u":"https://news.google.com/rss/search?q=Iran+nuclear+uranium+IAEA+enrichment&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    # ─── خبرگزاری‌ها ───────────────────────────────────────────────────
+    {"n":"🇺🇸 AP World",        "u":"https://apnews.com/hub/world-news.rss"},
+    {"n":"🇺🇸 AP Middle East",  "u":"https://apnews.com/hub/middle-east.rss"},
+    {"n":"🇺🇸 AP Nuclear",      "u":"https://apnews.com/hub/nuclear-weapons.rss"},
+    {"n":"🇺🇸 NBC World",       "u":"https://feeds.nbcnews.com/feeds/worldnews"},
+    {"n":"🇺🇸 PBS NewsHour",    "u":"https://www.pbs.org/newshour/feed"},
+    # ─── نظامی/دفاعی ────────────────────────────────────────────────────
+    {"n":"🇺🇸 USNI News",       "u":"https://news.usni.org/feed"},
+    {"n":"🇺🇸 Breaking Defense","u":"https://breakingdefense.com/feed/"},
+    {"n":"🇺🇸 The War Zone",    "u":"https://www.twz.com/feed"},
+    {"n":"🇺🇸 Defense News",    "u":"https://www.defensenews.com/arc/outboundfeeds/rss/"},
+    {"n":"🇺🇸 Stars & Stripes", "u":"https://www.stripes.com/rss/arc/outboundfeeds/news/"},
+    {"n":"🇺🇸 CTP-ISW Iran",    "u":"https://www.criticalthreats.org/feed"},
+    {"n":"🇺🇸 Long War Journal","u":"https://www.longwarjournal.org/feed"},
+    # ─── تحلیل/سیاست ─────────────────────────────────────────────────────
+    {"n":"🇺🇸 Foreign Policy",  "u":"https://foreignpolicy.com/feed/"},
+    {"n":"🇺🇸 CFR",             "u":"https://www.cfr.org/rss/feeds/news.xml"},
+    {"n":"🇺🇸 Axios World",     "u":"https://api.axios.com/feed/"},
+    # ─── Google News — بحران امروز ─────────────────────────────────────
+    {"n":"📰 GN Witkoff Geneva","u":"https://news.google.com/rss/search?q=Witkoff+Kushner+Iran+nuclear+Geneva+talks&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GN Trump Iran war","u":"https://news.google.com/rss/search?q=Trump+Iran+military+strike+war+2026&hl=en-US&gl=US&ceid=US:en&num=15&tbs=qdr:d"},
+    {"n":"📰 GN USS Lincoln",   "u":"https://news.google.com/rss/search?q=USS+Abraham+Lincoln+carrier+Iran+Persian+Gulf&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"📰 GN Vance Iran",    "u":"https://news.google.com/rss/search?q=Vance+Rubio+Hegseth+Iran+military+nuclear&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
+    {"n":"📰 GN Hormuz",        "u":"https://news.google.com/rss/search?q=Strait+Hormuz+Iran+US+navy+oil&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
+
 EMBASSY_FEEDS = [
-    {"n":"🏛️ US State Travel",      "u":"https://travel.state.gov/content/travel/en/traveladvisories/traveladvisories.html.rss"},
-    {"n":"🏛️ UK FCDO Iran",         "u":"https://www.gov.uk/foreign-travel-advice/iran.atom"},
-    {"n":"🏛️ Embassy Evacuation",   "u":"https://news.google.com/rss/search?q=embassy+evacuation+Iran+warning+2026&hl=en-US&gl=US&ceid=US:en&num=10"},
+    # تخلیه دیپلمات‌ها — وضعیت امروز حاد است
+    {"n":"🏛️ US State Dept",   "u":"https://travel.state.gov/content/travel/en/traveladvisories/traveladvisories.html.rss"},
+    {"n":"🏛️ UK FCDO",         "u":"https://www.gov.uk/foreign-travel-advice/iran.atom"},
+    {"n":"📰 GN Evacuation",   "u":"https://news.google.com/rss/search?q=embassy+evacuation+diplomats+Iran+Lebanon+2026&hl=en-US&gl=US&ceid=US:en&num=10&tbs=qdr:d"},
 ]
+
 INTL_FEEDS = [
-    {"n":"🌐 BBC Middle East",  "u":"https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"},
-    {"n":"🌐 Al Jazeera",       "u":"https://www.aljazeera.com/xml/rss/all.xml"},
-    {"n":"🌐 Middle East Eye",  "u":"https://www.middleeasteye.net/rss"},
-    {"n":"🌐 Foreign Policy",   "u":"https://foreignpolicy.com/feed/"},
-    {"n":"🌐 The Guardian ME",  "u":"https://www.theguardian.com/world/middleeast/rss"},
+    {"n":"🌐 BBC Middle East", "u":"https://feeds.bbci.co.uk/news/world/middle_east/rss.xml"},
+    {"n":"🌐 Al Jazeera",      "u":"https://www.aljazeera.com/xml/rss/all.xml"},
+    {"n":"🌐 Middle East Eye", "u":"https://www.middleeasteye.net/rss"},
+    {"n":"🌐 The Guardian ME", "u":"https://www.theguardian.com/world/middleeast/rss"},
+    {"n":"🌐 MEI",             "u":"https://www.mei.edu/rss.xml"},
 ]
+
 
 ALL_RSS_FEEDS = IRAN_FEEDS + ISRAEL_FEEDS + USA_FEEDS + EMBASSY_FEEDS + INTL_FEEDS
 EMBASSY_SET   = {id(f) for f in EMBASSY_FEEDS}
@@ -135,66 +153,54 @@ EMBASSY_SET   = {id(f) for f in EMBASSY_FEEDS}
 TWITTER_HANDLES = [
     # ─── OSINT / Breaking — اولویت بالا ───────────────────────────────
     # ❌ "OSINTdefender" اشتباه بود — handle واقعی @sentdefender است
-    ("🔍 OSINTdefender", "sentdefender"),
-    ("🔍 OSINTtechnical", "Osinttechnical"),
-    ("🔍 IntelCrab", "IntelCrab"),
-    ("🔍 GeoConfirmed", "GeoConfirmed"),
-    ("🔍 WarMonitor", "WarMonitor3"),
-    ("🔍 AuroraIntel", "AuroraIntel"),
-    ("🔍 Faytuks", "Faytuks"),
-    ("🔍 Clash Report", "clashreport"),
-    ("🔍 Megatron", "Megatron_ron"),
-    ("🔍 ELINT News", "ELINTNews"),
-    ("🔍 The War Zone", "thewarzonewire"),
-
+    ("🔍 OSINTdefender",        "sentdefender"),
+    ("🔍 OSINTtechnical",       "Osinttechnical"),
+    ("🔍 IntelCrab",            "IntelCrab"),
+    ("🔍 GeoConfirmed",         "GeoConfirmed"),
+    ("🔍 WarMonitor",           "WarMonitor3"),
+    ("🔍 AuroraIntel",          "AuroraIntel"),
+    ("🔍 Faytuks",              "Faytuks"),
+    ("🔍 Clash Report",         "clashreport"),
+    ("🔍 Megatron",             "Megatron_Ron"),
+    ("🔍 ELINT News",           "ELINTNews"),
+    ("🔍 War Zone TW",          "TheWarZoneTW"),
     # ─── آمریکا دولتی / نظامی ─────────────────────────────────────────
-    ("🇺🇸 CENTCOM", "CENTCOM"),
-    ("🇺🇸 DoD", "DeptofDefense"),
-    ("🇺🇸 Natasha Bertrand", "NatashaBertrand"),
-    ("🇺🇸 Barak Ravid", "BarakRavid"),
-    ("🇺🇸 Idrees Ali", "idreesali114"),
-    ("🇺🇸 Jack Detsch", "JackDetsch"),
-    ("🇺🇸 Lara Seligman", "laraseligman"),
-    ("🇺🇸 Jim Sciutto", "jimsciutto"),
-
+    ("🇺🇸 CENTCOM",              "CENTCOM"),
+    ("🇺🇸 DoD",                  "DeptofDefense"),
+    ("🇺🇸 Natasha Bertrand",     "NatashaBertrand"),
+    ("🇺🇸 Barak Ravid",          "BarakRavid"),
+    ("🇺🇸 Idrees Ali",           "idreesali114"),
+    ("🇺🇸 Jack Detsch",          "JackDetsch"),
+    ("🇺🇸 Lara Seligman",        "laraseligman"),
+    ("🇺🇸 Jim Sciutto",          "jimsciutto"),
     # ─── اسراییل ───────────────────────────────────────────────────────
-    ("🇮🇱 IDF", "IDF"),
-    ("🇮🇱 Israeli PM", "IsraeliPM"),
-    ("🇮🇱 Yossi Melman", "yossi_melman"),
-    ("🇮🇱 Seth Frantzman", "sfrantzman"),
-    ("🇮🇱 Emanuel Fabian", "manniefabian"),
-    ("🇮🇱 Anna Ahronheim", "AAhronheim"),
-    ("🇮🇱 Eylon Levy", "EylonALevy"),
-    ("🇮🇱 Jonathan Conricus", "jconricus"),
-    ("🇮🇱 Haviv Rettig Gur", "havivrettiggur"),
-
+    ("🇮🇱 IDF",                  "IDF"),
+    ("🇮🇱 Israeli PM",           "IsraeliPM"),
+    ("🇮🇱 Yossi Melman",         "yossi_melman"),
+    ("🇮🇱 Seth Frantzman",       "sfrantzman"),
+    ("🇮🇱 Emanuel Fabian",       "manniefabian"),
+    ("🇮🇱 Anna Ahronheim",       "AAhronheim"),
     # ─── ایران / خاورمیانه ────────────────────────────────────────────
-    ("🇮🇷 IranIntl EN", "IranIntl_En"),
-    ("🇮🇷 IRNA EN", "IRNA_English"),
-    ("🇮🇷 Press TV", "PressTV"),
-    ("🇮🇷 Farnaz Fassihi", "farnazfassihi"),
-    ("🇮🇷 Kasra Aarabi", "KasraAarabi"),
-    ("🇮🇷 Ali Vaez", "AliVaez"),
-    ("🇮🇷 Karim Sadjadpour", "ksadjadpour"),
-    ("🇮🇷 Vali Nasr", "vali_nasr"),
-
+    ("🇮🇷 IranIntl EN",          "IranIntl_En"),
+    ("🇮🇷 IRNA EN",              "IRNA_English"),
+    ("🇮🇷 Press TV",             "PressTV"),
+    ("🇮🇷 Farnaz Fassihi",       "farnazfassihi"),
+    ("🇮🇷 Kasra Aarabi",         "KasraAarabi"),
     # ─── منطقه‌ای ──────────────────────────────────────────────────────
-    ("🇸🇦 Al Arabiya Brk", "AlArabiya_Brk"),
-    ("🇶🇦 Al Jazeera EN", "AlJazeeraEnglish"),
-    ("🌐 Reuters Breaking", "Reuters"),
-    ("🌐 AP News", "AP"),
-    ("🌐 BBC Breaking", "BBCBreaking"),
-    ("🌐 AFP News", "AFP"),
-
+    ("🇸🇦 Al Arabiya Brk",       "AlArabiya_Brk"),
+    ("🇶🇦 Al Jazeera EN",        "AlJazeeraEnglish"),
+    ("🌐 Reuters Breaking",      "ReutersBreaking"),
+    ("🌐 AP News",               "APnews"),
+    ("🌐 BBC Breaking",          "BBCBreaking"),
+    ("🌐 AFP News",              "AFPnews"),
     # ─── تحلیلگران ─────────────────────────────────────────────────────
-    ("🔍 Ian Bremmer", "ianbremmer"),
-    ("🔍 Ellie Geranmayeh", "EllieGeranmayeh"),
-    ("🔍 Michael Knights", "Mikeknightsiraq"),
-    ("🔍 Aric Toler", "AricToler"),
-    ("🔍 Aaron David Miller", "aarondmiller2"),
-    ("🔍 Max Abrahms", "MaxAbrahms"),
-    ("⚠️ DEFCONLevel", "DEFCONLevel"),
+    ("🔍 Ian Bremmer",           "ianbremmer"),
+    ("🔍 Ellie Geranmayeh",      "EllieGeranmayeh"),
+    ("🔍 Michael Knights",       "Mikeknightsiraq"),
+    ("🔍 Aric Toler",            "AricToler"),
+    ("⚠️ DEFCONLevel",           "DEFCONLevel"),
 ]
+
 # ══════════════════════════════════════════════════════════════════════════
 # کانال‌های تلگرام
 # ══════════════════════════════════════════════════════════════════════════
@@ -233,60 +239,202 @@ TELEGRAM_CHANNELS = [
 ]
 
 # ══════════════════════════════════════════════════════════════════════════
-# فیلتر موضوعی — آزاد: هر خبر درباره ایران، آمریکا یا اسراییل
+# کلیدواژه‌های ۲۷ فوریه ۲۰۲۶ — شخصیت‌ها و رویدادهای جاری
 # ══════════════════════════════════════════════════════════════════════════
+
+# ─── ایران — رهبری + نظامی + هسته‌ای ───────────────────────────────────────
 IRAN_KW = [
-    "iran","iranian","irgc","islamic republic","khamenei","tehran","persian gulf",
-    "sepah","basij","quds force","rouhani","raisi","pezeshkian","zarif","araghchi",
-    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی","پزشکیان","ظریف","نطنز","فردو",
-]
-USA_KW = [
-    "united states","us military","pentagon","centcom","white house","biden","trump",
-    "us navy","us air force","us army","cia","state department","secretary of state",
-    "u.s.","u.s. navy","u.s. military","u.s. forces","american forces","american military",
-    "american troops","carrier strike","uss ", "rubio","austin","hegseth","blinken",
-    "american carrier","us carrier","us warship","us troops","us forces","us base",
-    "آمریکا","آمریکا","پنتاگون","کاخ سفید","روبیو","ترامپ","نیروی دریایی آمریکا","سیا","وزارت خارجه آمریکا",
-]
-ISRAEL_KW = [
-    "israel","israeli","idf","netanyahu","tel aviv","mossad","iron dome","arrow",
-    "iaf","israeli air force","knesset","bennett","herzog","gallant",
-    "اسراییل","ارتش اسراییل","نتانیاهو","تل‌آویو","موساد","گنبد آهنین","نیروی هوایی اسراییل",
-]
-PROXY_KW = [
-    "hamas","hezbollah","houthi","pij","islamic jihad","ansar allah",
-    "حماس","حزب‌الله","حوثی","جهاد اسلامی","انصارالله",
-]
-HARD_EXCLUDE = [
-    "football","soccer","basketball","olympic","sport","cooking","recipe",
-    "fashion","celebrity","entertainment","music award","box office","nba","nfl",
-    "فوتبال","سینما","موسیقی","آشپزی","مد و لباس",
-]
-EMBASSY_OVERRIDE = [
-    "evacuate","leave immediately","travel warning","security alert","emergency",
-    "تخلیه","فوری ترک","هشدار امنیتی","اضطرار",
+    # اسامی — مقامات فعلی ۲۰۲۶
+    "khamenei","pezeshkian","araghchi","abbas araghchi",
+    "ali shamkhani","shamkhani",          # دبیر شورای عالی امنیت ملی
+    "ali larijani","larijani",             # رئیس SNSC
+    "esmail baghaei","baghaei",            # سخنگوی وزارت خارجه
+    "hossein salami","salami",             # فرمانده سپاه
+    "mohammad bagheri","bagheri",          # رئیس ستاد کل
+    "ali fadavi","fadavi",                 # فرمانده نیروی دریایی سپاه
+    # سازمان‌ها
+    "irgc","sepah","basij","quds force","islamic republic",
+    "iran","iranian","tehran",
+    # برنامه هسته‌ای ۲۰۲۶ (بعد از حملات ژوئن ۲۰۲۵)
+    "natanz","fordow","isfahan","arak",    # تأسیسات هسته‌ای
+    "iran nuclear","uranium enrichment","centrifuge",
+    "60 percent","90 percent","weapons grade",
+    "reconstitute","rebuild nuclear",      # بازسازی برنامه هسته‌ای
+    "planetary mixer",                     # تجهیزات موشکی کشف‌شده
+    # دیپلماسی ۲۰۲۶
+    "geneva talks","oman talks","vienna talks","nuclear deal",
+    "witkoff iran","kushner iran","araghchi witkoff",
+    "iran sanctions relief","iran deal",
+    # جغرافیا
+    "persian gulf","strait of hormuz","hormuz closure",
+    "iran naval","iris","bandar abbas",    # نیروی دریایی ایران
+    # اعتراضات ۲۰۲۵-۲۰۲۶
+    "iran protests","iranian protests","iran crackdown",
+    "iran unrest","iran uprising","iran demonstrations",
+    "twelve-day war","iran-israel war",    # جنگ ۱۲ روزه ژوئن ۲۰۲۵
+    # فارسی
+    "ایران","سپاه","خامنه‌ای","تهران","جمهوری اسلامی",
+    "پزشکیان","عراقچی","شمخانی","لاریجانی","باقری",
+    "نطنز","فردو","اصفهان","تنگه هرمز","خلیج فارس",
+    "غنی‌سازی","اورانیوم","توافق هسته‌ای","مذاکرات هسته‌ای",
+    "اعتراضات ایران","سرکوب","جنگ دوازده روزه",
+    "برنامه موشکی ایران","موشک بالستیک ایران",
 ]
 
-def is_war_relevant(text, is_embassy=False, is_tg=False, is_tw=False):
+# ─── آمریکا — تیم ترامپ ۲۰۲۶ ──────────────────────────────────────────────
+USA_KW = [
+    # رئیس جمهور + تیم اصلی
+    "trump","donald trump","white house",
+    "jd vance","vance",                    # معاون رئیس جمهور
+    "marco rubio","rubio",                 # وزیر خارجه
+    "pete hegseth","hegseth",              # وزیر دفاع
+    "scott bessent","bessent",             # وزیر خزانه‌داری
+    "tulsi gabbard","gabbard",             # رئیس اطلاعات ملی
+    # مذاکره‌کنندگان هسته‌ای ۲۰۲۶
+    "steve witkoff","witkoff",             # نماینده ویژه خاورمیانه
+    "jared kushner","kushner",             # نماینده ویژه
+    "brad cooper","cooper",                # فرمانده CENTCOM (در مذاکرات عمان)
+    "mike huckabee","huckabee",            # سفیر آمریکا در اسراییل
+    # نظامی
+    "pentagon","centcom","us military","us navy",
+    "us air force","us army","us forces","us troops",
+    "carrier strike group","aircraft carrier",
+    "uss abraham lincoln","lincoln carrier",
+    "uss gerald r ford","ford carrier",    # ناو دوم که فوریه ۲۰۲۶ اعزام شد
+    "b-52","b-2","f-35","bunker buster",   # سلاح‌های احتمالی حمله به ایران
+    "gbu-57","massive ordnance penetrator","mop",
+    "al udeid","al-udeid",                 # پایگاه قطر که موشک‌ها آماده شدند
+    # سیاسی
+    "united states","u.s.","state department","cia",
+    "iran sanctions","maximum pressure","us tariff iran",
+    "war authorization","aumf","congress iran",
+    "state of the union","sotu iran",      # سخنرانی ترامپ ۲۵ فوریه ۲۰۲۶
+    # فارسی
+    "آمریکا","ترامپ","پنتاگون","کاخ سفید",
+    "ناو هواپیمابر","ناو آبراهام لینکلن","ناو جرالد فورد",
+    "ویتکوف","کوشنر","روبیو","هگست","بسنت","گبارد","ونس",
+    "تحریم","فشار حداکثری","پایگاه العدید",
+]
+
+# ─── اسراییل — رهبری + نظامی ۲۰۲۶ ────────────────────────────────────────
+ISRAEL_KW = [
+    # رهبری ۲۰۲۶
+    "netanyahu","benjamin netanyahu",
+    "eyal zamir","yoav gallant",           # وزرای دفاع
+    "bezalel smotrich","smotrich",         # وزیر مالی ائتلاف راست افراطی
+    "itamar ben gvir","ben gvir",          # وزیر امنیت ملی
+    "israel katz","katz",                  # وزیر خارجه
+    # نظامی
+    "idf","mossad","shin bet","aman",
+    "israel","israeli","iaf","israeli air force",
+    "iron dome","arrow missile","david's sling",
+    "tel aviv","jerusalem",
+    "israel iran war","june 2025 strikes",  # جنگ ژوئن ۲۰۲۵
+    "israeli strike iran","iran strike israel",
+    # فارسی
+    "اسراییل","نتانیاهو","موساد","گنبد آهنین","موشک ایران",
+    "تل‌آویو","اورشلیم","ارتش اسراییل","نیروی هوایی اسراییل",
+    "اسموتریچ","بن‌گویر",
+]
+
+# ─── منطقه‌ای / پروکسی / میانجی ───────────────────────────────────────────
+PROXY_KW = [
+    # پروکسی‌های ایران (محور مقاومت — تضعیف‌شده اما فعال)
+    "hamas","hezbollah","houthi","ansar allah",
+    "pij","islamic jihad","kataib hezbollah",
+    # میانجیان هسته‌ای ۲۰۲۶
+    "oman","badr al-busaidi","al-busaidi",  # وزیر خارجه عمان — میانجی
+    "rafael grossi","grossi","iaea",        # مدیر آژانس بین‌المللی انرژی اتمی
+    "turkey mediation","erdogan iran",
+    "qatar mediation","qatar iran",
+    # فارسی
+    "حماس","حزب‌الله","حوثی","انصارالله","جهاد اسلامی",
+    "عمان","گروسی","آژانس اتمی","میانجیگری",
+]
+
+# ─── موضوعات کلیدی جنگ/بحران ۲۰۲۶ ───────────────────────────────────────
+WAR_CONTEXT_KW = [
+    # بحران هسته‌ای
+    "nuclear weapon","nuclear strike","nuclear deal","nuclear talks",
+    "uranium enrichment","weapons grade","iaea inspection",
+    "nuclear breakout","nuclear threshold",
+    "fordow destroy","natanz destroy","isfahan bomb",
+    # حمله نظامی
+    "military strike","airstrike","attack iran","strike iran",
+    "bomb iran","regime change","decapitation strike",
+    "us strike","israel strike",
+    # ناوگان آمریکا
+    "carrier strike group","persian gulf fleet","arabian sea",
+    "military buildup","war preparations",
+    "last chance","final warning","war clock",
+    # تنگه هرمز ۲۰۲۶
+    "hormuz closure","strait blocked","oil tanker iran",
+    "fast attack boat","iranian drone","iranian naval",
+    # تحریم‌ها
+    "iran oil sanctions","25 percent tariff china iran",
+    "china iran oil","iran oil exports",
+    # اعتراضات + کودتا
+    "iran uprising","iran revolution","regime collapse",
+    "iran protests killed","iran crackdown 2026",
+    # رویدادهای مشخص فوریه ۲۰۲۶
+    "geneva round","fourth round talks","vienna iaea",
+    "technical teams iran","nuclear framework",
+    # فارسی
+    "حمله نظامی","ضربه هسته‌ای","تغییر رژیم",
+    "جنگ دوازده روزه","مذاکرات ژنو","مذاکرات وین",
+    "تهدید به جنگ","آماده‌باش نظامی","بسته پیشنهادی",
+    "گفتگوی هسته‌ای","فشار حداکثری","تحریم نفت ایران",
+]
+
+# ─── حذف قطعی (کاملاً غیرمرتبط) ───────────────────────────────────────────
+HARD_EXCLUDE = [
+    "football","soccer","basketball","nba","nfl","world cup","championship",
+    "olympic","marathon","tennis","golf","cricket","baseball","rugby",
+    "celebrity","entertainment","movie","film","music award","concert",
+    "box office","grammy","oscar","emmy","fashion","cooking","recipe","travel guide",
+    "فوتبال","سینما","موسیقی","آشپزی","مد","بازی","سریال","توریست","گردشگری",
+    "stock market","crypto","bitcoin","forex",
+    "بورس","ارز دیجیتال","بیت‌کوین",
+    "climate change","global warming","weather","earthquake","flood",  # بلایا طبیعی
+    "آب‌وهوا","زلزله","سیل",
+]
+
+EMBASSY_OVERRIDE = [
+    "evacuate","leave immediately","travel warning","security alert","emergency",
+    "warden message","embassy closed","consulate closed",
+    "تخلیه","فوری ترک","هشدار امنیتی","اضطرار","هشدار سفارت",
+]
+
+def is_war_relevant(text: str, is_embassy=False, is_tg=False, is_tw=False) -> bool:
     """
-    فیلتر آزاد v18:
-    هر خبری که شامل ایران، آمریکا یا اسراییل باشد — ارسال می‌شود
-    (بدون نیاز به کلمه عمل/action)
+    فیلتر ۲۰۲۶ — فقط جنگ و تنش ایران/آمریکا/اسراییل
+
+    منطق:
+    ۱. حذف قطعی (ورزش/سرگرمی)
+    ۲. سفارت + هشدار → pass
+    ۳. حداقل یک طرف اصلی (ایران/آمریکا/اسراییل) → pass
+    ۴. موضوع جنگ بدون کشور مشخص → pass (مثلاً "nuclear talks" بدون ذکر ایران)
     """
     txt = text.lower()
-    # حذف قطعی
+
+    # ۱. حذف قطعی
     if any(k in txt for k in HARD_EXCLUDE):
         return False
-    # سفارت: همیشه pass
+
+    # ۲. سفارت
     if is_embassy and any(k in txt for k in EMBASSY_OVERRIDE):
         return True
-    # بررسی حضور هر یک از سه طرف اصلی
-    has_iran   = any(k in txt for k in IRAN_KW)
-    has_usa    = any(k in txt for k in USA_KW)
-    has_israel = any(k in txt for k in ISRAEL_KW)
-    has_proxy  = any(k in txt for k in PROXY_KW)
-    # هر خبر با حداقل یک طرف اصلی = ارسال
-    return has_iran or has_usa or has_israel or has_proxy
+
+    # ۳. حضور هر طرف اصلی
+    if any(k in txt for k in IRAN_KW):   return True
+    if any(k in txt for k in USA_KW):    return True
+    if any(k in txt for k in ISRAEL_KW): return True
+    if any(k in txt for k in PROXY_KW):  return True
+
+    # ۴. موضوعات جنگ خاورمیانه حتی بدون ذکر صریح کشور
+    if any(k in txt for k in WAR_CONTEXT_KW): return True
+
+    return False
 
 # ══════════════════════════════════════════════════════════════════════════
 # Twitter/X — Feb 2026 — ترتیب اولویت از بالاترین uptime در GitHub Actions
@@ -1136,20 +1284,9 @@ def save_stories(stories):
 # ترجمه — Gemini اول، MyMemory رایگان fallback
 # ══════════════════════════════════════════════════════════════════════════
 GEMINI_MODELS = [
-"gemini-3.1-pro-preview",
-"gemini-3-pro-preview",
-"gemini-3-flash-preview",
-"gemini-2.5-pro",
-"gemini-2.5-flash",
-"gemini-2.5-flash-lite",
-"gemini-2.5-flash-live-preview",
-"gemini-2.5-flash-tts-preview",
-"gemini-2.5-pro-tts-preview",
-"computer-use-preview",
-"gemini-deep-research-preview",
-"gemini-embeddings",
-"gemini-robotics-preview",
-"gemini-flash-latest",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
 ]
 
 # تشخیص متن فارسی
@@ -1687,212 +1824,191 @@ async def fetch_article_image(client: httpx.AsyncClient, url: str) -> "io.BytesI
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# main
+# یک چرخه fetch → filter → send
+# ══════════════════════════════════════════════════════════════════════════
+async def _run_cycle(client: httpx.AsyncClient,
+                     seen: set, stories: list,
+                     cutoff: datetime) -> tuple:
+    """
+    یک چرخه کامل.
+    برمی‌گرداند: (seen, stories, cutoff_for_next)
+    """
+    cycle_start = datetime.now(timezone.utc)
+    save_run_state()
+
+    # ── fetch موازی ──────────────────────────────────────────────────────
+    flight_task = asyncio.create_task(fetch_military_flights(client))
+    raw_task    = asyncio.create_task(fetch_all(client, cutoff))
+    (flight_msgs, flight_aircraft), raw = await asyncio.gather(flight_task, raw_task)
+    log.info(f"  📥 {len(raw)} خام  ✈️ {len(flight_aircraft)} جنگنده")
+
+    # ── پردازش ───────────────────────────────────────────────────────────
+    collected = []
+    cnt_old = cnt_irrel = cnt_dup = cnt_story = 0
+
+    for entry, src_name, src_type, is_emb in raw:
+        eid = make_id(entry)
+        if eid in seen:                         cnt_dup   += 1; continue
+        if not is_fresh(entry, cutoff):         cnt_old   += 1; continue
+        t   = clean_html(entry.get("title",""))
+        s   = clean_html(entry.get("summary") or entry.get("description") or "")
+        if not is_war_relevant(f"{t} {s}", is_embassy=is_emb,
+                               is_tg=(src_type=="tg"), is_tw=(src_type=="tw")):
+            cnt_irrel += 1; continue
+        if is_story_dup(t, stories):            cnt_story += 1; continue
+        collected.append((eid, entry, src_name, src_type, is_emb))
+        stories = register_story(t, stories)
+
+    log.info(f"  📊 قدیمی:{cnt_old} نامرتبط:{cnt_irrel} dup:{cnt_dup} story:{cnt_story} ✅{len(collected)}")
+
+    collected = list(reversed(collected))[:MAX_NEW_PER_RUN]
+
+    # ── هواپیماهای جنگی ──────────────────────────────────────────────────
+    if flight_aircraft:
+        map_buf = make_flight_map(flight_aircraft)
+        if map_buf:
+            regions = set(a["region"] for a in flight_aircraft)
+            cap = [f"✈️ <b>تحرکات هوایی نظامی — {' | '.join(regions)}</b>"]
+            for ac in flight_aircraft[:8]:
+                cap.append(f"• <code>{ac['callsign']}</code> ({ac['type']}) "
+                           f"alt:{int(ac['alt'])//1000 if ac['alt'] else '?'}k  "
+                           f"{ac['gs']}kt — {ac['region']}")
+            cap.append(f"\n🕐 {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
+            await tg_send_photo(client, map_buf, "\n".join(cap))
+            await asyncio.sleep(0.8)
+        else:
+            for msg in flight_msgs[:4]:
+                await tg_send_text(client, msg); await asyncio.sleep(0.5)
+    elif flight_msgs:
+        for msg in flight_msgs[:2]:
+            await tg_send_text(client, msg); await asyncio.sleep(0.5)
+
+    if not collected:
+        log.info("  💤 خبر جدیدی نیست")
+        save_seen(seen); save_stories(stories)
+        return seen, stories, cycle_start
+
+    # ── ترجمه ────────────────────────────────────────────────────────────
+    arts_in = [
+        (trim(clean_html(e.get("title","")), 400),
+         trim(clean_html(e.get("summary") or e.get("description") or ""), 600))
+        for _, e, _, _, _ in collected
+    ]
+    log.info(f"  🌐 ترجمه {len(arts_in)} خبر...")
+    translations = await translate_batch(client, arts_in)
+
+    # ── ارسال ────────────────────────────────────────────────────────────
+    sent = 0
+    for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
+        fa_title, fa_body = translations[i]
+        en_title = arts_in[i][0]
+        link     = entry.get("link","")
+        dt_str   = format_dt(entry)
+
+        title_is_fa = _is_farsi(fa_title) if fa_title else False
+        orig_is_fa  = _is_farsi(en_title)
+        if not title_is_fa and not orig_is_fa:
+            log.info(f"  ⏭ skip(noFA): {en_title[:50]}"); continue
+
+        display = fa_title.strip() if title_is_fa else en_title.strip()
+        body_fa = ""
+        if fa_body and _is_farsi(fa_body) and len(fa_body) > 15:
+            body_fa = fa_body.strip()
+        elif _is_farsi(arts_in[i][1]):
+            body_fa = arts_in[i][1].strip()
+
+        s_bar = sentiment_bar(analyze_sentiment(f"{fa_title} {fa_body} {en_title}"))
+        cap   = [s_bar, f"<b>{esc(display)}</b>"]
+        if body_fa and body_fa[:50] not in display[:50]:
+            cap += ["", esc(trim(body_fa, 800))]
+        if dt_str: cap.append(f"\n🕐 {dt_str}")
+        caption = "\n".join(cap)
+
+        done = False
+        if link and stype == "rss":
+            img = await fetch_article_image(client, link)
+            if img:
+                ok = await tg_send_photo(client, img, caption[:1024])
+                if ok: done = True; log.info("    📸 تصویر+فارسی")
+
+        if not done:
+            ok = await tg_send_text(client, caption)
+            if ok: done = True; log.info("    ✉️ متن فارسی")
+
+        if done:
+            seen.add(eid); sent += 1
+        await asyncio.sleep(SEND_DELAY)
+
+    save_seen(seen); save_stories(stories)
+    log.info(f"  🏁 {sent}/{len(collected)} ارسال  seen:{len(seen)}")
+    return seen, stories, cycle_start
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# main — حلقه دائمی
 # ══════════════════════════════════════════════════════════════════════════
 async def main():
     global _TW_SEMA
     if not BOT_TOKEN or not CHANNEL_ID:
-        log.error("❌ BOT_TOKEN یا CHANNEL_ID نیست!"); return
+        log.error("❌ BOT_TOKEN یا CHANNEL_ID تنظیم نشده!"); return
 
-    # ── semaphore Twitter ─────────────────────────────────────────────
-    _TW_SEMA = asyncio.Semaphore(20)  # ۲۰ handle همزمان
+    _TW_SEMA = asyncio.Semaphore(20)
 
-    # ── cutoff هوشمند ────────────────────────────────────────────────
-    # باگ قبلی: max(cutoff, max_cutoff) باعث می‌شد اخبار ۱۲-۶۰ دقیقه پیش از دست برود
-    # چون GitHub Actions اغلب ۱۵-۳۰ دقیقه تأخیر دارد
-    # اصلاح: فقط از last_run استفاده می‌کنیم، MAX_LOOKBACK_MIN = 90 min
+    # cutoff اولیه
     last_run = load_run_state()
     now_utc  = datetime.now(timezone.utc)
     cutoff   = last_run - timedelta(minutes=CUTOFF_BUFFER_MIN)
-    # فقط cap از بالا — اگه last_run خیلی قدیمی بود (اولین اجرا/crash طولانی)
-    oldest_allowed = now_utc - timedelta(minutes=MAX_LOOKBACK_MIN)
-    if cutoff < oldest_allowed:
-        cutoff = oldest_allowed
-
-    # run_state را قبل از fetch ذخیره کن
-    # اگه bot crash کند، next run از همین نقطه ادامه می‌دهد نه از ابتدا
-    save_run_state()
+    if cutoff < now_utc - timedelta(minutes=MAX_LOOKBACK_MIN):
+        cutoff = now_utc - timedelta(minutes=MAX_LOOKBACK_MIN)
 
     seen    = load_seen()
     stories = load_stories()
 
-    log.info("=" * 65)
-    log.info(f"🚀 WarBot v18  |  {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
+    mode = "GitHub CI" if _CI else "محلی — بی‌نهایت"
+    log.info("=" * 70)
+    log.info(f"🚀 WarBot v19 | {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران %Y/%m/%d')}")
+    log.info(f"   mode={mode}  max={BOT_MAX_RUNTIME_MIN}min  interval={LOOP_INTERVAL_SEC}s")
     log.info(f"   📡 {len(ALL_RSS_FEEDS)} RSS  📢 {len(TELEGRAM_CHANNELS)} TG  𝕏 {len(TWITTER_HANDLES)} TW")
-    log.info(f"   PIL:{'✅' if PIL_OK else '❌'}  seen:{len(seen)}")
-    log.info(f"   ⏱ cutoff={cutoff.astimezone(TEHRAN_TZ).strftime('%H:%M')} تهران"
-             f"  (last_run={last_run.astimezone(TEHRAN_TZ).strftime('%H:%M')})")
-    log.info("=" * 65)
+    log.info(f"   seen:{len(seen)}  stories:{len(stories)}  PIL:{'✅' if PIL_OK else '❌'}")
+    log.info("=" * 70)
 
-    limits = httpx.Limits(max_connections=100, max_keepalive_connections=30)
+    wall_start = datetime.now(timezone.utc)
+    loop_n     = 0
+    limits     = httpx.Limits(max_connections=100, max_keepalive_connections=30)
+
     async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
+        await build_twitter_pools(client)
 
-        # ── ADS-B + fetch موازی ───────────────────────────────────────
-        flight_task = asyncio.create_task(fetch_military_flights(client))
-        raw_task    = asyncio.create_task(fetch_all(client, cutoff))
-        (flight_msgs, flight_aircraft), raw = await asyncio.gather(flight_task, raw_task)
-        log.info(f"📥 {len(raw)} آیتم خام  ✈️ {len(flight_msgs)} تحرک ({len(flight_aircraft)} با موقعیت)")
+        while True:
+            loop_n += 1
+            elapsed_min = (datetime.now(timezone.utc) - wall_start).total_seconds() / 60
+            log.info(f"\n{'━'*55}")
+            log.info(f"  ⟳ Loop #{loop_n}  elapsed={elapsed_min:.1f}min"
+                     f"  {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
 
-        # ── پردازش ───────────────────────────────────────────────────
-        collected = []
-        sent_ids  = set()
-        cnt_old = cnt_irrel = cnt_url = cnt_story = 0
+            t0 = datetime.now(timezone.utc)
+            try:
+                seen, stories, next_cutoff = await _run_cycle(
+                    client, seen, stories, cutoff)
+                # cutoff بعدی = شروع این cycle - buffer
+                cutoff = next_cutoff - timedelta(minutes=CUTOFF_BUFFER_MIN)
+            except Exception as e:
+                log.error(f"  ❌ cycle error: {e}")
+                import traceback; log.debug(traceback.format_exc())
 
-        for entry, src_name, src_type, is_emb in raw:
-            eid = make_id(entry)
+            took = (datetime.now(timezone.utc) - t0).total_seconds()
+            log.info(f"  ⏱ cycle took {took:.0f}s")
 
-            # لایه ۱: قبلاً ارسال شده؟
-            if eid in seen:
-                cnt_url += 1; continue
+            # بررسی exit برای CI
+            elapsed_min = (datetime.now(timezone.utc) - wall_start).total_seconds() / 60
+            if elapsed_min >= BOT_MAX_RUNTIME_MIN:
+                log.info(f"  ⏹ CI timeout ({BOT_MAX_RUNTIME_MIN}min) — خروج سالم")
+                break
 
-            # لایه ۲: در پنجره زمانی؟ (TG قبلاً فیلتر شده، RSS اینجا)
-            if not is_fresh(entry, cutoff):
-                cnt_old += 1; continue
-
-            # لایه ۳: مرتبط با جنگ؟
-            t    = clean_html(entry.get("title", ""))
-            s    = clean_html(entry.get("summary") or entry.get("description") or "")
-            full = f"{t} {s}"
-            if not is_war_relevant(full, is_embassy=is_emb,
-                                   is_tg=(src_type=="tg"), is_tw=(src_type=="tw")):
-                cnt_irrel += 1; continue
-
-            # لایه ۴: story تکراری؟
-            if is_story_dup(t, stories):
-                # باگ قبلی: seen.add(eid) باعث می‌شد خبر هرگز retry نشود
-                # اصلاح: فقط skip — seen.json فقط برای ارسال‌شده‌هاست
-                cnt_story += 1; continue
-
-            collected.append((eid, entry, src_name, src_type, is_emb))
-            stories = register_story(t, stories)
-
-        log.info(
-            f"📊 قدیمی:{cnt_old}  نامرتبط:{cnt_irrel}  "
-            f"dup:{cnt_url}  story-dup:{cnt_story}  ✅ {len(collected)} خبر"
-        )
-
-        # قدیمی‌ترین اول، حداکثر MAX_NEW_PER_RUN
-        collected = list(reversed(collected))
-        if len(collected) > MAX_NEW_PER_RUN:
-            log.warning(f"⚠️ {len(collected)} → {MAX_NEW_PER_RUN} (برش داده شد)")
-            collected = collected[-MAX_NEW_PER_RUN:]
-
-        # ── ADS-B — نقشه + پیام‌ها ──────────────────────────────────────
-        if flight_aircraft:
-            # نقشه PIL با موقعیت هواپیماها
-            map_buf = make_flight_map(flight_aircraft)
-            if map_buf:
-                regions = set(a["region"] for a in flight_aircraft)
-                cap_parts = [f"✈️ <b>تحرکات هوایی نظامی — {' | '.join(regions)}</b>"]
-                for ac in flight_aircraft[:8]:
-                    cap_parts.append(
-                        f"• <code>{ac['callsign']}</code> ({ac['type']}) "
-                        f"ارتفاع:{int(ac['alt'])//1000 if ac['alt'] else '?'}k ft "
-                        f"سرعت:{ac['gs']} kt — {ac['region']}"
-                    )
-                cap_parts.append(f"\n🕐 {datetime.now(TEHRAN_TZ).strftime('%H:%M تهران')}")
-                await tg_send_photo(client, map_buf, "\n".join(cap_parts))
-                await asyncio.sleep(0.8)
-            else:
-                # بدون PIL: ارسال متنی
-                for msg in flight_msgs[:5]:
-                    await tg_send_text(client, msg)
-                    await asyncio.sleep(0.5)
-        elif flight_msgs:
-            for msg in flight_msgs[:3]:
-                await tg_send_text(client, msg)
-                await asyncio.sleep(0.5)
-
-        if not collected:
-            log.info("💤 خبر جنگی جدیدی نیست")
-            save_seen(seen); save_stories(stories)
-            return
-
-        # ── ترجمه — همیشه (Gemini یا MyMemory) ────────────────────────
-        arts_in = [
-            (trim(clean_html(e.get("title", "")), 400),
-             trim(clean_html(e.get("summary") or e.get("description") or ""), 600))
-            for _, e, _, _, _ in collected
-        ]
-        log.info(f"🌐 ترجمه {len(arts_in)} خبر...")
-        translations = await translate_batch(client, arts_in)
-
-        # ── ارسال — فقط فارسی — تصویر اصلی خبر ─────────────────────
-        sent = 0
-        for i, (eid, entry, src_name, stype, is_emb) in enumerate(collected):
-            fa_title, fa_body = translations[i]
-            en_title          = arts_in[i][0]
-            link              = entry.get("link", "")
-            dt_str            = format_dt(entry)
-
-            # ── بررسی: آیا ترجمه فارسی موجود است؟ ──────────────────────
-            # اگه عنوان هنوز انگلیسی است → skip (ارسال انگلیسی ممنوع)
-            title_is_fa = _is_farsi(fa_title) if fa_title else False
-            orig_is_fa  = _is_farsi(en_title)   # خبر اصل فارسی بود؟
-
-            if not title_is_fa and not orig_is_fa:
-                # ترجمه fail کرد و خبر انگلیسی است → skip
-                log.info(f"  ⏭ skip (no FA): {en_title[:55]}")
-                # به seen اضافه نکن تا دفعه بعد retry شود
-                continue
-
-            # عنوان نهایی: اگه فارسی ترجمه شد استفاده کن، وگرنه فارسی اصلی
-            display = fa_title.strip() if title_is_fa else en_title.strip()
-
-            # ── متن توضیح — فقط فارسی ───────────────────────────────────
-            body_fa = ""
-            if fa_body and _is_farsi(fa_body) and len(fa_body) > 15:
-                body_fa = fa_body.strip()
-            elif not body_fa and _is_farsi(en_title) and arts_in[i][1]:
-                # خبر اصل فارسی بود → از body اصلی استفاده کن
-                orig_body = arts_in[i][1]
-                if _is_farsi(orig_body):
-                    body_fa = orig_body.strip()
-
-            urgent = any(w in (fa_title + fa_body + en_title).lower() for w in [
-                "attack","strike","killed","bomb","explosion","nuclear","missile",
-                "حمله","کشته","انفجار","موشک","شهید","هسته‌ای","فوری","اعلام جنگ","بمب",
-            ])
-            sentiment_icons = analyze_sentiment(f"{fa_title} {fa_body} {en_title}")
-            s_bar           = sentiment_bar(sentiment_icons)
-            importance      = calc_importance(en_title, "", sentiment_icons, stype)
-            log.info(f"  → [{stype}] imp={importance}  {display[:65]}")
-
-            # ── caption — فارسی خالص، بدون لینک، بدون منبع ─────────────
-            cap_parts = [s_bar, f"<b>{esc(display)}</b>"]
-            if body_fa and body_fa[:60] not in display[:60]:
-                cap_parts += ["", esc(trim(body_fa, 800))]
-            if dt_str:
-                cap_parts.append(f"\n🕐 {dt_str}")
-            caption = "\n".join(cap_parts)
-
-            card_sent = False
-
-            # ── تصویر اصلی از سایت خبر (RSS only) ──────────────────────
-            if link and stype == "rss":
-                img_buf = await fetch_article_image(client, link)
-                if img_buf:
-                    ok = await tg_send_photo(client, img_buf, caption[:1024])
-                    if ok:
-                        card_sent = True
-                        log.info("    ✅ تصویر خبر + فارسی")
-
-            # ── fallback: متن خالص فارسی ────────────────────────────────
-            if not card_sent:
-                ok = await tg_send_text(client, caption)
-                if ok:
-                    card_sent = True
-                    log.info("    ✅ متن فارسی")
-
-            if card_sent:
-                sent_ids.add(eid)
-                seen.add(eid)   # فوری به seen اضافه کن تا ارسال مجدد نشود
-                sent += 1
-            await asyncio.sleep(SEND_DELAY)
-
-        seen.update(sent_ids)
-        save_seen(seen); save_stories(stories)
-        log.info(f"🏁 {sent}/{len(collected)} خبر  seen:{len(seen)}")
+            # صبر تا cycle بعدی
+            wait = max(5.0, LOOP_INTERVAL_SEC - took)
+            log.info(f"  💤 {wait:.0f}s تا چرخه بعدی...")
+            await asyncio.sleep(wait)
 
 
 if __name__ == "__main__":
