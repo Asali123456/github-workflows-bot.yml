@@ -67,7 +67,6 @@ jobs:
             run_state.json \
             nitter_cache.json \
             gemini_state.json \
-            flight_alerts.json \
             2>/dev/null || true
           git diff --staged --quiet || \
             (git commit -m "♻️ state [skip ci]" && git push)
