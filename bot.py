@@ -146,6 +146,59 @@ INTL_FEEDS = [
 ALL_RSS_FEEDS = IRAN_FEEDS + ISRAEL_FEEDS + USA_FEEDS + EMBASSY_FEEDS + INTL_FEEDS
 EMBASSY_SET   = {id(f) for f in EMBASSY_FEEDS}
 
+# ── بارگذاری منابع اضافی از data/extra_sources.json (خروجی sources_updater.py) ──
+# این فایل را با: python3 sources_updater.py بسازید
+# سپس در GitHub commit کنید — bot هر بار startup آن را می‌خواند
+
+def _load_extra_sources():
+    """
+    data/extra_sources.json را می‌خواند و به لیست‌های اصلی اضافه می‌کند.
+    اگر فایل وجود نداشت، بی‌صدا ادامه می‌دهد.
+    """
+    global ALL_RSS_FEEDS, TWITTER_HANDLES, TELEGRAM_CHANNELS
+
+    extra_path = Path("data/extra_sources.json")
+    if not extra_path.exists():
+        return  # فایل نیست — نرمال است
+
+    try:
+        data = json.loads(extra_path.read_text(encoding="utf-8"))
+        added_rss = added_tw = added_tg = 0
+
+        # ── RSS feeds جدید ────────────────────────────────────────────
+        existing_urls = {f["u"] for f in ALL_RSS_FEEDS}
+        for feed in data.get("rss_feeds", []):
+            if feed.get("u") and feed["u"] not in existing_urls:
+                ALL_RSS_FEEDS.append({"n": feed.get("n","📰"), "u": feed["u"]})
+                existing_urls.add(feed["u"])
+                added_rss += 1
+
+        # ── Twitter handles جدید ──────────────────────────────────────
+        existing_tw = {h.lower() for _, h in TWITTER_HANDLES}
+        for tw in data.get("twitter", []):
+            handle = tw.get("handle","").strip()
+            if handle and handle.lower() not in existing_tw:
+                TWITTER_HANDLES.append((tw.get("label", f"📰 @{handle}"), handle))
+                existing_tw.add(handle.lower())
+                added_tw += 1
+
+        # ── Telegram channels جدید ────────────────────────────────────
+        existing_tg = {h.lower() for _, h in TELEGRAM_CHANNELS}
+        for tg in data.get("telegram", []):
+            handle = tg.get("handle","").strip()
+            if handle and handle.lower() not in existing_tg:
+                TELEGRAM_CHANNELS.append((tg.get("label", f"🔴 @{handle}"), handle))
+                existing_tg.add(handle.lower())
+                added_tg += 1
+
+        if added_rss + added_tw + added_tg > 0:
+            log.info(f"📂 extra_sources.json: +{added_rss} RSS  +{added_tw} 𝕏  +{added_tg} TG")
+
+    except Exception as e:
+        log.warning(f"extra_sources.json خطا: {e}")
+
+_load_extra_sources()  # اجرا در زمان import
+
 # ══════════════════════════════════════════════════════════════════════════
 # Twitter/X handles
 # ══════════════════════════════════════════════════════════════════════════
@@ -221,10 +274,8 @@ TELEGRAM_CHANNELS = [
     ("🇮🇷 مهر فارسی",             "mehrnews_fa"),
     ("🇮🇷 ایرنا فارسی",           "irnafarsi"),
     ("🇮🇷 Press TV",              "PressTVnews"),
-    ("🇮🇷 ایکس‌نیوز فارسی",         "FarsiOfficialx"),
-    ("🇮🇷 BBC PERSIAN",              "bbcpersian"),
     # اسراییل
-    ("🇮🇱 Kann News",            "israelhayomofficial"),
+    ("🇮🇱 Kann News",            "kann_news"),
     ("🇮🇱 Times of Israel",      "timesofisrael"),
     # منطقه
     ("🇸🇦 Al Arabiya Breaking",  "AlArabiya_Brk"),
